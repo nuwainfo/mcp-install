@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mcp-install"
+version = "0.1.0"
+description = "Reusable, app-agnostic installer for registering stdio MCP servers with Claude Desktop, Claude Code, Codex, and Grok Build"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/nuwainfo/mcp-install"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mcp_install"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/mcp_install/**/*.py", "README.md", "LICENSE"]
