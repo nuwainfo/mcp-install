@@ -8,11 +8,30 @@ version = "0.1.0"
 description = "Reusable, app-agnostic installer for registering stdio MCP servers with Claude Desktop, Claude Code, Codex, and Grok Build"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Apache-2.0" }
+authors = [{name = "mcp-install contributors"}]
+license = "Apache-2.0"
+keywords = ["mcp", "model-context-protocol", "installer", "claude", "codex", "grok"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Build Tools",
+]
 dependencies = []
 
 [project.urls]
 Homepage = "https://github.com/nuwainfo/mcp-install"
+Repository = "https://github.com/nuwainfo/mcp-install"
+Issues = "https://github.com/nuwainfo/mcp-install/issues"
+
+[project.optional-dependencies]
+dev = ["build>=1.2"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mcp_install"]
