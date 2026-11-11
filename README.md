@@ -98,6 +98,10 @@ python -m unittest discover -s tests -p "*Test.py" -v
 
 ## Agent Skills
 
+Each Agent backend handles both its MCP registration and its Skill destinations.
+Skill directory validation and file operations are shared across backends,
+rather than maintained in a separate Skill backend registry.
+
 A consuming project may ship just Skills, just an MCP server, or both. Skills
 are copied as complete directories (including `scripts/`, `references/`, and
 `assets/`) from paths **relative to the manifest directory**. Every Skill
@@ -138,7 +142,7 @@ install --component skill --uninstall --target codex  # remove owned Skill direc
 Existing directories are preserved unless `--overwrite` is passed; overwrites
 receive a timestamped backup. `--uninstall` only deletes directories marked as
 managed by mcp-install. Symbolic links and paths escaping the manifest root are
-rejected. The standalone Skills flow does not require `uvx` or an MCP server.
+rejected. The standalone Skills flow does not require `uvx`, an MCP server, or a Claude Code CLI.
 
 For `openmausbot`, staged Skills must be imported via **Settings → Replay welcome
 tour → Bring what you already use** and reviewed/enabled in OpenMausBot. This
