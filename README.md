@@ -78,7 +78,7 @@ pip install -e ../mcp-install
 ## CLI
 
 ```bash
-install --print                                    # preview the entry, no writes
+install --print                                    # preview with environment values redacted
 install --target claude-desktop,claude-code,codex,grok-build,openmausbot,opencode
 install --env ALLOWED_BASE_DIR=~/Downloads          # repeatable KEY=VALUE
 install --env-file .env.install                     # KEY=VALUE per line
@@ -88,6 +88,7 @@ install --codex-config /path/to/codex/config.toml
 install --grok-config /path/to/grok/config.toml
 install --openmausbot-config /path/to/openmausbot/config.json
 install --opencode-config /path/to/opencode/opencode.jsonc
+install --print --show-secrets                      # explicit opt-in; exposes environment values
 install --uninstall --target claude-code
 install --app-config /path/to/install.config.json   # override manifest lookup
 ```
@@ -109,11 +110,22 @@ JSON/JSONC file already exists, preserving unrelated settings and comments;
 the current OpenCode V2 format. Existing configuration files are backed up
 before changes.
 
+MCP preview output from `--print` redacts environment values by default.
+`--print --show-secrets` reveals the full values; do not use it in shared logs.
+
 ## Testing
 
 ```bash
 python -m unittest discover -s tests -p "*Test.py" -v
 ```
+
+CI also builds wheel and source distributions, checks their metadata with Twine,
+and installs each in a fresh virtual environment before allowing a release.
+
+To publish a version, create a GitHub release using a `v<version>` tag
+pointing to a commit on `main`. The publishing workflow verifies the tag
+against both package version fields, reruns tests, and validates both
+distribution formats before uploading to PyPI.
 
 ## Agent Skills
 
@@ -138,14 +150,16 @@ Skill-only manifest:
 
 Add the same `skills` array to the existing MCP manifest to install both.
 The `name` field is optional and defaults to the Skill directory's basename.
-Skill names use lowercase letters, numbers and hyphens.
+Skill names use lowercase letters, numbers and hyphens. The `SKILL.md`
+frontmatter must include matching `name` (up to 64 characters) and a
+non-empty `description` (up to 1024 characters).
 
 ```bash
 install --component auto --target all                 # default: install whatever the manifest provides
 install --component skill --target claude-code,codex  # only Skills
 install --component mcp --target claude-code          # only MCP
 install --component all --target codex                # require both
-install --component skill --scope project --project-dir .
+install --component skill --scope project --project-dir . # all: skips project-unsupported targets
 install --component skill --print                      # preview destinations without writing
 install --component skill --uninstall --target codex  # remove owned Skill directories
 ```
@@ -164,6 +178,8 @@ receive a timestamped backup. `--uninstall` only deletes directories marked as
 managed by mcp-install. Symbolic links and paths escaping the manifest root are
 rejected. The standalone Skills flow does not require `uvx`, an MCP server, or a Claude Code CLI.
 OpenCode Skills use its native folders; an OpenCode executable is not required.
+For `--scope project --target all`, backends without project-scoped Skills are
+skipped. Explicitly targeting an unsupported project Skill backend fails fast.
 
 For `openmausbot`, staged Skills must be imported via **Settings → Replay welcome
 tour → Bring what you already use** and reviewed/enabled in OpenMausBot. This
