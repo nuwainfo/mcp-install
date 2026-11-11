@@ -45,6 +45,7 @@ from .Base import (
 from .Claude import ClaudeCliBackend, ClaudeDesktopBackend, getClaudeCliPath, getDefaultClaudeDesktopConfigPath
 from .Codex import CodexBackend, getDefaultCodexConfigPath
 from .Grok import GrokBackend, getDefaultGrokConfigPath
+from .OpenMausBot import OpenMausBotBackend, getDefaultOpenMausBotConfigPath
 
 __all__ = [
     "ConfigBackend",
@@ -69,4 +70,6 @@ __all__ = [
     "getDefaultCodexConfigPath",
     "GrokBackend",
     "getDefaultGrokConfigPath",
+    "OpenMausBotBackend",
+    "getDefaultOpenMausBotConfigPath",
 ]

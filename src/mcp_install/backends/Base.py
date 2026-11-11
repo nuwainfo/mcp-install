@@ -35,7 +35,9 @@ import datetime
 import json
 import pathlib
 import re
+import shutil
 import subprocess
+import tempfile
 
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
@@ -77,26 +79,31 @@ def readJsonFile(path: pathlib.Path) -> Dict[str, Any]:
 
 
 def writeJsonAtomic(path: pathlib.Path, data: Dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tempPath = path.with_suffix(path.suffix + ".tmp")
-    tempPath.write_text(json.dumps(data, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
-    tempPath.replace(path)
+    writeTextAtomic(path, json.dumps(data, ensure_ascii=True, indent=2) + "\n")
 
 
 def writeTextAtomic(path: pathlib.Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tempPath = path.with_suffix(path.suffix + ".tmp")
-    tempPath.write_text(text, encoding="utf-8")
-    tempPath.replace(path)
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=path.parent, prefix=path.name + ".",
+        suffix=".tmp", delete=False,
+    ) as temporary:
+        tempPath = pathlib.Path(temporary.name)
+        temporary.write(text)
+    try:
+        tempPath.replace(path)
+    finally:
+        if tempPath.exists():
+            tempPath.unlink()
 
 
 def backupFile(path: pathlib.Path) -> Optional[pathlib.Path]:
     if not path.exists():
         return None
 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     backupPath = path.with_suffix(path.suffix + f".bak_{timestamp}")
-    backupPath.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    shutil.copy2(path, backupPath)
     return backupPath
 
 

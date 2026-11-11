@@ -49,10 +49,12 @@ from mcp_install.backends import (
     CodexBackend,
     ConfigBackend,
     GrokBackend,
+    OpenMausBotBackend,
     getClaudeCliPath,
     getDefaultClaudeDesktopConfigPath,
     getDefaultCodexConfigPath,
     getDefaultGrokConfigPath,
+    getDefaultOpenMausBotConfigPath,
 )
 
 defaultAppConfigFilename = "install.config.json"
@@ -232,7 +234,7 @@ targetAliases = {
 
 def normalizeInstallTargets(rawTargets: list[str]) -> list[str]:
     if "all" in rawTargets:
-        rawTargets = ["claude-desktop", "claude-code", "codex", "grok-build"]
+        rawTargets = ["claude-desktop", "claude-code", "codex", "grok-build", "openmausbot"]
 
     targets = []
     for target in rawTargets:
@@ -240,7 +242,7 @@ def normalizeInstallTargets(rawTargets: list[str]) -> list[str]:
         if normalizedTarget not in targets:
             targets.append(normalizedTarget)
 
-    allowedTargets = {"claude-desktop", "claude-code", "codex", "grok-build"}
+    allowedTargets = {"claude-desktop", "claude-code", "codex", "grok-build", "openmausbot"}
     invalidTargets = [target for target in targets if target not in allowedTargets]
     if invalidTargets:
         raise ValueError(f"Invalid --target: {', '.join(invalidTargets)}")
@@ -251,12 +253,14 @@ def buildConfigBackends(
     claudeConfigPath: pathlib.Path,
     codexConfigPath: pathlib.Path,
     grokConfigPath: pathlib.Path,
+    openMausBotConfigPath: pathlib.Path,
     cliScope: str,
 ) -> Dict[str, ConfigBackend]:
     backends: Dict[str, ConfigBackend] = {
         "claude-desktop": ClaudeDesktopBackend(claudeConfigPath),
         "codex": CodexBackend(codexConfigPath),
         "grok-build": GrokBackend(grokConfigPath),
+        "openmausbot": OpenMausBotBackend(openMausBotConfigPath),
     }
 
     claudeCliPath = getClaudeCliPath()
@@ -272,6 +276,8 @@ def main() -> None:
     parser.add_argument("--config", dest="configPath", help="Path to claude_desktop_config.json (optional).")
     parser.add_argument("--codex-config", dest="codexConfigPath", help="Path to Codex config.toml (optional).")
     parser.add_argument("--grok-config", dest="grokConfigPath", help="Path to Grok config.toml (optional).")
+    parser.add_argument("--openmausbot-config", dest="openMausBotConfigPath",
+                        help="Path to OpenMausBot config.json (defaults to OMB_DATA_DIR/config.json).")
     parser.add_argument("--server-name", dest="serverName", help="Overrides the app config's serverName.")
     parser.add_argument("--entrypoint", dest="entrypoint", help="Overrides the app config's entrypoint.")
     parser.add_argument("--from", dest="uvxFrom", help="Force uvx --from spec (e.g. git+https://...).")
@@ -295,7 +301,7 @@ def main() -> None:
         dest="installTargets",
         default="all",
         help=(
-            "Comma-separated: all, claude-desktop, claude-code, codex, grok-build. "
+            "Comma-separated: all, claude-desktop, claude-code, codex, grok-build, openmausbot. "
             "Legacy aliases: claude-cli, codex-cli, codex-desktop, grok."
         ),
     )
@@ -328,6 +334,9 @@ def main() -> None:
         grokConfigPath = pathlib.Path(args.grokConfigPath).expanduser().resolve(strict=False)
     else:
         grokConfigPath = getDefaultGrokConfigPath()
+
+    openMausBotConfigPath = (pathlib.Path(args.openMausBotConfigPath).expanduser().resolve(strict=False)
+                             if args.openMausBotConfigPath else getDefaultOpenMausBotConfigPath())
 
     uvxFrom = args.uvxFrom or inferUvxFromSpec(appConfig.distributionName)
 
@@ -373,7 +382,9 @@ def main() -> None:
             skillInstaller.apply(appConfig.skills, installTargets, args.scope, manifestPath,
                                  projectPath, printOnly=True)
         return
-    configBackends = buildConfigBackends(configPath, codexConfigPath, grokConfigPath, args.cliScope) if installMCP else {}
+    configBackends = buildConfigBackends(
+        configPath, codexConfigPath, grokConfigPath, openMausBotConfigPath, args.cliScope
+    ) if installMCP else {}
     completedTargets = []
 
     if installMCP and "claude-code" in installTargets and "claude-code" not in configBackends:
@@ -408,7 +419,7 @@ def main() -> None:
     if installMCP and not args.uninstall:
         warmPyappBinary(binaryPath)
 
-    if any(target in completedTargets for target in {"claude-desktop", "codex", "grok-build"}):
+    if any(target in completedTargets for target in {"claude-desktop", "codex", "grok-build", "openmausbot"}):
         print("\nNext: restart your MCP client or reload its MCP servers.")
     elif "claude-code" in completedTargets:
         print("\nNext: restart Claude Code or reload MCP servers.")

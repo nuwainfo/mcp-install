@@ -12,6 +12,9 @@ import tempfile
 from dataclasses import dataclass
 from typing import Optional
 
+from .Backend import SkillBackend
+from .OpenMausBot import OpenMausBotSkillBackend
+
 
 @dataclass(frozen=True)
 class SkillSpec:
@@ -28,22 +31,6 @@ class SkillSpec:
         return cls(path=value["path"], name=name)
 
 
-class SkillBackend:
-    """Maps one Agent's user/project skill directories to a common deployment operation."""
-
-    def __init__(self, target: str, userDirectory: str, projectDirectory: Optional[str]):
-        self.target = target
-        self.userDirectory = userDirectory
-        self.projectDirectory = projectDirectory
-
-    def root(self, scope: str, homePath: pathlib.Path, projectPath: pathlib.Path) -> pathlib.Path:
-        if scope == "user":
-            return homePath / self.userDirectory
-        if self.projectDirectory is None:
-            raise ValueError(f"{self.target} does not support project-scoped skills")
-        return projectPath / self.projectDirectory
-
-
 class SkillInstaller:
     """Validates a packaged skill and publishes complete, owned directories to Agent roots."""
 
@@ -57,6 +44,7 @@ class SkillInstaller:
                 SkillBackend("claude-code", ".claude/skills", ".claude/skills"),
                 SkillBackend("codex", ".agents/skills", ".agents/skills"),
                 SkillBackend("grok-build", ".grok/skills", ".grok/skills"),
+                OpenMausBotSkillBackend(),
             )
         }
 
@@ -69,7 +57,7 @@ class SkillInstaller:
     @classmethod
     def _source(cls, spec: SkillSpec, manifestPath: pathlib.Path) -> pathlib.Path:
         relative = pathlib.PurePath(spec.path)
-        if relative.is_absolute() or ".." in relative.parts:
+        if "\\\\" in spec.path or ":" in spec.path or relative.is_absolute() or ".." in relative.parts:
             raise ValueError(f"Skill path must remain under the manifest directory: {spec.path}")
         root = manifestPath.parent.resolve()
         source = (root / relative).resolve()
@@ -158,19 +146,26 @@ class SkillInstaller:
         for spec in specs:
             name = self._validateName(spec.name or pathlib.PurePath(spec.path).name)
             source = None if uninstall else self._source(spec, manifestPath)
+            handled = set()
             for target in targets:
                 backend = self.backends.get(target)
                 if backend is None:
                     print(f"Warning: {target} does not support filesystem Skill installation; skipped.")
                     continue
-                destination = backend.root(scope, self.homePath, projectPath) / name
-                if printOnly:
-                    print(f"Skill {name}: {source} -> {target}: {destination}")
-                elif uninstall:
-                    removed = self._remove(destination)
-                    print(f"{'Removed' if removed else 'Not found'} skill {name} at {destination}")
-                else:
-                    backupPath = self._publish(source, destination, overwrite)
-                    print(f"Installed skill {name} into {destination}")
-                    if backupPath:
-                        print(f"Backup: {backupPath}")
+                for root in backend.roots(scope, self.homePath, projectPath):
+                    destination = root / name
+                    if destination in handled:
+                        continue
+                    handled.add(destination)
+                    if printOnly:
+                        print(f"Skill {name}: {source} -> {target}: {destination}")
+                    elif uninstall:
+                        removed = self._remove(destination)
+                        print(f"{'Removed' if removed else 'Not found'} skill {name} at {destination}")
+                    else:
+                        backupPath = self._publish(source, destination, overwrite)
+                        print(f"Installed skill {name} into {destination}")
+                        if backupPath:
+                            print(f"Backup: {backupPath}")
+                if backend.installationNotice and not uninstall and not printOnly:
+                    print(backend.installationNotice)
