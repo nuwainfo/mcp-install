@@ -17,12 +17,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""mcp-install: a reusable, app-agnostic installer for stdio MCP servers.
+"""mcp-install: reusable MCP server and Agent Skill installer.
 
 Consuming projects call `mcp_install.Install:main` (typically wired up as their
 own `install` console-script entry point) and supply an `install.config.json`
-app manifest describing their own server name, entrypoint command, and which
-env vars to forward. See `mcp_install.Install` for details.
+app manifest describing their MCP server and/or Skills. See `mcp_install.Install` for details.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
