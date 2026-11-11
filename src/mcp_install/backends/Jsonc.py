@@ -107,6 +107,10 @@ class JsoncDocument:
 
         return data
 
+    @property
+    def data(self) -> dict:
+        return self._validate()
+
     @classmethod
     def _valueEnd(cls, text: str, position: int) -> int:
         if text[position] == '"':
