@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-install"
-version = "0.1.0"
+version = "0.2.0"
 description = "Reusable installer for MCP servers and Agent Skills across Claude, Codex, Grok, and OpenMausBot"
 readme = "README.md"
 requires-python = ">=3.10"

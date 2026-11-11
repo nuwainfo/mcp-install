@@ -19,9 +19,9 @@ pip install mcp-install
 pip install -e ../mcp-install
 ```
 
-## Wiring it into your own MCP server project
+## Wiring it into your project
 
-1. Add `mcp-install` as a dependency of your project.
+1. Add `mcp-install` as a dependency of your MCP server or Skill project.
 2. Add your own `install` console-script entry point in your `pyproject.toml`:
 
    ```toml
@@ -29,7 +29,7 @@ pip install -e ../mcp-install
    install = "mcp_install.Install:main"
    ```
 
-3. Ship an `install.config.json` manifest at your project root:
+3. Ship an `install.config.json` manifest at your project root. For an MCP server, for example:
 
    ```json
    {
@@ -47,13 +47,14 @@ pip install -e ../mcp-install
 
    | Key | Required | Meaning |
    |---|---|---|
-   | `serverName` | yes | Default key the server is registered under in each client's config (overridable with `--server-name`). |
-   | `entrypoint` | yes | Command run via `uvx <entrypoint>` (overridable with `--entrypoint`). |
+   | `serverName` | for MCP | Default key the server is registered under in each client's config (overridable with `--server-name`). |
+   | `entrypoint` | for MCP | Command run via `uvx <entrypoint>` (overridable with `--entrypoint`). |
    | `distributionName` | no | PyPI/installed distribution name used to infer a `uvx --from <git-url>` source from the running install's metadata. |
    | `binaryEnvVar` | no | Env var name checked for a pre-built standalone binary path; when set, `install` registers that binary directly instead of a `uvx` command. |
    | `envKeys` | no | Which env vars get forwarded into the registered MCP entry's `env` block, from `--env`/`--env-file`/the process environment. |
    | `defaultEnvValues` | no | Values applied to `envKeys` that end up unset after collection. |
    | `envWarnings` | no | Printed once per key still unset after defaults are applied — use this for security-relevant env vars you want to nudge users toward setting. |
+   | `skills` | no | List of Skill directories; enough on its own for Skill-only projects. See [Agent Skills](#agent-skills). |
 
 4. If you also ship a standalone binary (e.g. via PyApp), bundle
    `install.config.json` into it too, and pass `--app-config <path>` (resolved
@@ -81,26 +82,13 @@ install --app-config /path/to/install.config.json   # override manifest lookup
 override its location with `--app-config` or the `INSTALL_APP_CONFIG` env var.
 
 `--target` accepts `all` (default), `claude-desktop`, `claude-code`, `codex`,
-`grok-build`, `openmausbot`. Legacy aliases `claude-cli`, `codex-cli`, `codex-desktop`, and
+`grok-build`, `openmausbot`. Legacy aliases `claude-cli`, `codex-cli`,
+`codex-desktop`, and
 `grok` are accepted and normalized. `claude-code` registers via the Claude
 Code CLI (`claude mcp add-json`); `claude-desktop` writes JSON; `codex`/
-`grok-build` write TOML; `openmausbot` writes its own JSON config. Every write is preceded by a timestamped backup of
-the existing config file.
-
-## Package layout
-
-```
-mcp-install/
-├── src/
-│   └── mcp_install/
-│       ├── Install.py       # CLI entry point (main()), AppConfig, uvx-source inference
-│       └── backends/
-│           ├── Base.py      # ConfigBackend, JsonMcpBackend, TomlMcpBackend, TOML/file helpers
-│           ├── Claude.py    # ClaudeDesktopBackend, ClaudeCliBackend
-│           ├── Codex.py     # CodexBackend
-│           └── Grok.py      # GrokBackend
-└── tests/                   # unittest-based tests
-```
+`grok-build` write TOML; `openmausbot` writes JSON to `~/.openmausbot/config.json`
+(or `$OMB_DATA_DIR/config.json`). Use `--openmausbot-config` to override the path.
+Existing configuration files are backed up before changes.
 
 ## Testing
 
@@ -144,7 +132,7 @@ install --component skill --uninstall --target codex  # remove owned Skill direc
 | `claude-code` | `~/.claude/skills` | `.claude/skills` |
 | `codex` | `~/.agents/skills` | `.agents/skills` |
 | `grok-build` | `~/.grok/skills` | `.grok/skills` |
-| `openmausbot` | Stages in `~/.claude/skills` and `~/.codex/skills` for reviewed OpenMausBot import | Not supported |
+| `openmausbot` | `~/.claude/skills` and `~/.codex/skills` (staging for import) | Not supported |
 | `claude-desktop` | Not supported by filesystem installer; use Claude Desktop's Skill importer | — |
 
 Existing directories are preserved unless `--overwrite` is passed; overwrites
@@ -152,36 +140,7 @@ receive a timestamped backup. `--uninstall` only deletes directories marked as
 managed by mcp-install. Symbolic links and paths escaping the manifest root are
 rejected. The standalone Skills flow does not require `uvx` or an MCP server.
 
-## OpenMausBot integration
+For `openmausbot`, staged Skills must be imported via **Settings → Replay welcome
+tour → Bring what you already use** and reviewed/enabled in OpenMausBot. This
+uses its built-in security checks rather than modifying its internal Skill index.
 
-`--target openmausbot` registers MCP servers in OpenMausBot's
-`~/.openmausbot/config.json`, or `$OMB_DATA_DIR/config.json` when set.
-Use `--openmausbot-config` to override that location. Existing unrelated app
-settings and MCP entries are preserved; JSON/TOML config files and their
-backups are written with private permissions where supported.
-
-OpenMausBot **does not expose a universal filesystem drop-in Skill directory**.
-Its documented desktop onboarding imports the user's Claude Code and Codex
-Skills after security scanning and approval. Rather than modifying the
-application's private `imported-skills` index (which includes integrity hashes),
-`--target openmausbot --component skill` stages complete Skill folders in
-`~/.claude/skills` and `~/.codex/skills`. The installer preserves directory
-assets and reports the follow-up action:
-
-1. Open OpenMausBot's Settings, choose **Replay welcome tour**, then **Bring what you already use**.
-2. Review the imported Skills and enable them for bots as appropriate.
-
-Codex-backed bots can also access the user's `~/.codex/skills` natively;
-Claude-backed bots depend on the app's **Also use my Claude Code skills**
-setting. Global sharing across bots requires the reviewed import step.
-The OpenMausBot target supports user scope only, and this tool does not bypass
-OpenMausBot's own scanning or activation controls.
-
-```bash
-install --component all --target openmausbot
-install --component skill --target openmausbot --scope user
-install --component mcp --target openmausbot --openmausbot-config /custom/config.json
-```
-
-References: [OpenMausBot custom MCP servers](https://github.com/milind-soni/OpenMausBot/blob/main/docs/custom-mcp-servers.md),
-[Skill import implementation](https://github.com/milind-soni/OpenMausBot/blob/main/server/imported-skills.ts).
