@@ -85,7 +85,7 @@ class AppConfigTest(unittest.TestCase):
             base = pathlib.Path(tempDir)
             skill = base / "skills" / "hello"
             skill.mkdir(parents=True)
-            (skill / "SKILL.md").write_text("---\\nname: hello\\ndescription: Example\\n---\\n")
+            (skill / "SKILL.md").write_text("---\nname: hello\ndescription: Example\n---\n")
             configPath = base / "install.config.json"
             configPath.write_text('{"skills": [{"path": "skills/hello"}]}')
             args = ["install", "--app-config", str(configPath), "--target", "codex",
@@ -100,7 +100,7 @@ class AppConfigTest(unittest.TestCase):
             base = pathlib.Path(tempDir)
             skill = base / "skills" / "hello"
             skill.mkdir(parents=True)
-            (skill / "SKILL.md").write_text("---\\nname: hello\\ndescription: Example\\n---\\n")
+            (skill / "SKILL.md").write_text("---\nname: hello\ndescription: Example\n---\n")
             configPath = base / "install.config.json"
             configPath.write_text(
                 '{"serverName": "demo", "entrypoint": "demo-mcp", "skills": [{"path": "skills/hello"}]}'
