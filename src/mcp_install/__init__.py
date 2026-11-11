@@ -24,4 +24,4 @@ own `install` console-script entry point) and supply an `install.config.json`
 app manifest describing their MCP server and/or Skills. See `mcp_install.Install` for details.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
