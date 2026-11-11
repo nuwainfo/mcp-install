@@ -108,6 +108,11 @@ class SkillInstallerTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.apply()
 
+        link = self.project / "skills" / "linked"
+        link.symlink_to(skill, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            SkillInstaller.prepare([SkillSpec("skills/linked")], self.manifest)
+
     def testRejectsUnmanagedUninstall(self):
         folder = self.home / ".claude/skills/hello"
         folder.mkdir(parents=True)
