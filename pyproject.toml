@@ -5,12 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "mcp-install"
 version = "0.1.0"
-description = "Reusable, app-agnostic installer for registering stdio MCP servers with Claude Desktop, Claude Code, Codex, and Grok Build"
+description = "Reusable installer for MCP servers and Agent Skills across Claude, Codex, and Grok"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{name = "mcp-install contributors"}]
 license = "Apache-2.0"
-keywords = ["mcp", "model-context-protocol", "installer", "claude", "codex", "grok"]
+keywords = ["mcp", "model-context-protocol", "agent-skills", "installer", "claude", "codex", "grok"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
