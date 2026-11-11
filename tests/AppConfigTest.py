@@ -57,6 +57,26 @@ class AppConfigTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 loadAppConfig(str(configPath))
 
+    def testSkillOnlyManifest(self):
+        with tempfile.TemporaryDirectory() as tempDir:
+            configPath = pathlib.Path(tempDir) / "install.config.json"
+            configPath.write_text('{"skills": [{"path": "skills/hello"}]}', encoding="utf-8")
+            appConfig = loadAppConfig(str(configPath))
+            self.assertIsNone(appConfig.serverName)
+            self.assertIsNone(appConfig.entrypoint)
+            self.assertEqual("skills/hello", appConfig.skills[0].path)
+
+    def testCombinedManifest(self):
+        with tempfile.TemporaryDirectory() as tempDir:
+            configPath = pathlib.Path(tempDir) / "install.config.json"
+            configPath.write_text(
+                '{"serverName": "demo", "entrypoint": "demo-mcp", "skills": [{"path": "skills/hello"}]}',
+                encoding="utf-8",
+            )
+            appConfig = loadAppConfig(str(configPath))
+            self.assertEqual("demo", appConfig.serverName)
+            self.assertEqual("skills/hello", appConfig.skills[0].path)
+
     def testParseEnvAssignmentSplitsOnFirstEquals(self):
         self.assertEqual(parseEnvAssignment("KEY=a=b"), ("KEY", "a=b"))
         with self.assertRaises(ValueError):
