@@ -17,17 +17,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Generic MCP-server installer CLI.
-
-This module has no app-specific code in it — every app-specific detail
-(server name, entrypoint command, which env vars to forward, the PyPI
-distribution name used for uvx-source inference, the env var a standalone
-binary uses to identify itself) is read from an external JSON manifest at
-runtime (see `loadAppConfig()`). A consuming project wires this up as its own
-`install` console-script entry point (`install = "mcp_install.Install:main"`
-in its pyproject.toml) and ships its own `install.config.json` manifest —
-this file needs no changes.
-"""
+"""CLI orchestration for Agent-specific MCP registration and Skill installation."""
 
 from __future__ import annotations
 
@@ -47,7 +37,7 @@ from mcp_install.backends import (
     ClaudeCliBackend,
     ClaudeDesktopBackend,
     CodexBackend,
-    ConfigBackend,
+    AgentBackend,
     GrokBackend,
     OpenMausBotBackend,
     getClaudeCliPath,
@@ -249,189 +239,331 @@ def normalizeInstallTargets(rawTargets: list[str]) -> list[str]:
     return targets
 
 
-def buildConfigBackends(
+def buildAgentBackends(
     claudeConfigPath: pathlib.Path,
     codexConfigPath: pathlib.Path,
     grokConfigPath: pathlib.Path,
     openMausBotConfigPath: pathlib.Path,
     cliScope: str,
-) -> Dict[str, ConfigBackend]:
-    backends: Dict[str, ConfigBackend] = {
+) -> Dict[str, AgentBackend]:
+    """Create one backend per Agent, even when an MCP CLI is unavailable."""
+    return {
         "claude-desktop": ClaudeDesktopBackend(claudeConfigPath),
+        "claude-code": ClaudeCliBackend(getClaudeCliPath(), cliScope),
         "codex": CodexBackend(codexConfigPath),
         "grok-build": GrokBackend(grokConfigPath),
         "openmausbot": OpenMausBotBackend(openMausBotConfigPath),
     }
 
-    claudeCliPath = getClaudeCliPath()
-    if claudeCliPath:
-        backends["claude-code"] = ClaudeCliBackend(claudeCliPath, cliScope)
 
-    return backends
+class InstallCommand:
+    """Runs a single Agent-target loop for every requested component."""
 
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Install an MCP server into supported MCP clients.")
-    parser.add_argument("--app-config", dest="appConfigPath", help=f"Path to {defaultAppConfigFilename} (optional).")
-    parser.add_argument("--config", dest="configPath", help="Path to claude_desktop_config.json (optional).")
-    parser.add_argument("--codex-config", dest="codexConfigPath", help="Path to Codex config.toml (optional).")
-    parser.add_argument("--grok-config", dest="grokConfigPath", help="Path to Grok config.toml (optional).")
-    parser.add_argument("--openmausbot-config", dest="openMausBotConfigPath",
-                        help="Path to OpenMausBot config.json (defaults to OMB_DATA_DIR/config.json).")
-    parser.add_argument("--server-name", dest="serverName", help="Overrides the app config's serverName.")
-    parser.add_argument("--entrypoint", dest="entrypoint", help="Overrides the app config's entrypoint.")
-    parser.add_argument("--from", dest="uvxFrom", help="Force uvx --from spec (e.g. git+https://...).")
-    parser.add_argument("--overwrite", action="store_true", default=False)
-    parser.add_argument("--component", choices=("auto", "mcp", "skill", "all"), default="auto",
-                        help="Install MCP, Skills, both, or infer components from the manifest.")
-    parser.add_argument("--scope", choices=("user", "project"), default="user",
-                        help="Skill installation scope (independent of --cli-scope).")
-    parser.add_argument("--project-dir", dest="projectDir", default=None,
-                        help="Root directory used for project-scoped Skills (default: cwd).")
-    parser.add_argument("--uninstall", action="store_true", default=False)
-    parser.add_argument("--print", action="store_true", dest="printOnly")
-    parser.add_argument(
-        "--env", dest="envAssignments", action="append", metavar="KEY=VALUE",
-        help="Set an MCP server env var; repeatable.",
-    )
-    parser.add_argument("--env-file", dest="envFilePath", help="Load MCP server env vars from a KEY=VALUE file.")
-    parser.add_argument("--cli-scope", dest="cliScope", default="user")
-    parser.add_argument(
-        "--target",
-        dest="installTargets",
-        default="all",
-        help=(
-            "Comma-separated: all, claude-desktop, claude-code, codex, grok-build, openmausbot. "
-            "Legacy aliases: claude-cli, codex-cli, codex-desktop, grok."
-        ),
-    )
-    parser.add_argument("-y", "--yes", action="store_true", dest="assumeYes")
-    args = parser.parse_args()
-
-    appConfig = loadAppConfig(args.appConfigPath)
-    serverName = args.serverName or appConfig.serverName
-    entrypoint = args.entrypoint or appConfig.entrypoint
-    if bool(serverName) != bool(entrypoint):
-        raise ValueError("MCP installation requires both serverName and entrypoint")
-    installMCP = args.component in ("mcp", "all") or (args.component == "auto" and bool(serverName))
-    installSkills = args.component in ("skill", "all") or (args.component == "auto" and bool(appConfig.skills))
-    if installMCP and not (serverName and entrypoint):
-        raise ValueError("MCP component was selected but serverName/entrypoint are missing")
-    if installSkills and not appConfig.skills:
-        raise ValueError("Skill component was selected but no skills are configured")
-
-    if args.configPath:
-        configPath = pathlib.Path(args.configPath).expanduser().resolve(strict=False)
-    else:
-        configPath = getDefaultClaudeDesktopConfigPath()
-
-    if args.codexConfigPath:
-        codexConfigPath = pathlib.Path(args.codexConfigPath).expanduser().resolve(strict=False)
-    else:
-        codexConfigPath = getDefaultCodexConfigPath()
-
-    if args.grokConfigPath:
-        grokConfigPath = pathlib.Path(args.grokConfigPath).expanduser().resolve(strict=False)
-    else:
-        grokConfigPath = getDefaultGrokConfigPath()
-
-    openMausBotConfigPath = (pathlib.Path(args.openMausBotConfigPath).expanduser().resolve(strict=False)
-                             if args.openMausBotConfigPath else getDefaultOpenMausBotConfigPath())
-
-    uvxFrom = args.uvxFrom or inferUvxFromSpec(appConfig.distributionName)
-
-    envOverrides: Dict[str, str] = {}
-    if args.envFilePath:
-        envOverrides.update(parseEnvFile(pathlib.Path(args.envFilePath).expanduser().resolve(strict=False)))
-    for assignment in args.envAssignments or []:
-        key, value = parseEnvAssignment(assignment)
-        envOverrides[key] = value
-
-    env = collectEnv(envOverrides, appConfig.envKeys)
-    for key, defaultValue in appConfig.defaultEnvValues.items():
-        env.setdefault(key, defaultValue)
-
-    for key, warning in appConfig.envWarnings.items():
-        if key not in env:
-            print(f"Warning: {warning}")
-
-    # When running as a standalone binary (e.g. PyApp), register the binary itself as
-    # the MCP server command so end-users don't need uvx or Python installed.
-    binaryPath = os.environ.get(appConfig.binaryEnvVar) if installMCP and appConfig.binaryEnvVar else None
-    if not installMCP:
-        name, entry = "", {}
-    elif binaryPath:
-        entry: Dict[str, Any] = {"command": binaryPath, "args": []}
-        if env:
-            entry["env"] = env
-        name = serverName
-    else:
-        name, entry = buildMcpServerEntry(serverName, uvxFrom, entrypoint, env)
-
-    if args.printOnly and args.uninstall:
-        raise ValueError("--print cannot be combined with --uninstall")
-    installTargetsRaw = [part.strip() for part in args.installTargets.split(",") if part.strip()]
-    installTargets = normalizeInstallTargets(installTargetsRaw)
-    skillInstaller = SkillInstaller()
-    manifestPath = resolveAppConfigPath(args.appConfigPath)
-    projectPath = pathlib.Path(args.projectDir).expanduser().resolve() if args.projectDir else pathlib.Path.cwd()
-    if args.printOnly:
-        if installMCP:
-            print(json.dumps({name: entry}, ensure_ascii=True, indent=2))
-        if installSkills:
-            skillInstaller.apply(appConfig.skills, installTargets, args.scope, manifestPath,
-                                 projectPath, printOnly=True)
-        return
-    configBackends = buildConfigBackends(
-        configPath, codexConfigPath, grokConfigPath, openMausBotConfigPath, args.cliScope
-    ) if installMCP else {}
-    completedTargets = []
-
-    if installMCP and "claude-code" in installTargets and "claude-code" not in configBackends:
-        print("Warning: Claude Code CLI was not found; skipped claude-code.")
-
-    for target in installTargets if installMCP else []:
-        backend = configBackends.get(target)
-        if backend is None:
-            continue
-            
-        result = backend.uninstall(serverName) if args.uninstall else backend.install(
-            serverName,
-            entry,
-            args.overwrite,
+    @classmethod
+    def createParser(cls) -> argparse.ArgumentParser:
+        parser = argparse.ArgumentParser(
+            description="Install MCP servers and Agent Skills into supported AI agents."
         )
-        action = "Removed" if args.uninstall else "Installed"
-        print(f"{action} {serverName} {'from' if args.uninstall else 'into'} {result.label} config.")
+        parser.add_argument(
+            "--app-config",
+            dest="appConfigPath",
+            help=f"Path to {defaultAppConfigFilename} (optional).",
+        )
+        parser.add_argument("--config", dest="configPath", help="Claude Desktop JSON config.")
+        parser.add_argument("--codex-config", dest="codexConfigPath", help="Codex TOML config.")
+        parser.add_argument("--grok-config", dest="grokConfigPath", help="Grok TOML config.")
+        parser.add_argument(
+            "--openmausbot-config",
+            dest="openMausBotConfigPath",
+            help="OpenMausBot JSON config (defaults to OMB_DATA_DIR/config.json).",
+        )
+
+        parser.add_argument("--server-name", dest="serverName", help="Override serverName.")
+        parser.add_argument("--entrypoint", dest="entrypoint", help="Override entrypoint.")
+        parser.add_argument("--from", dest="uvxFrom", help="Force uvx --from source.")
+        parser.add_argument("--overwrite", action="store_true")
+        parser.add_argument("--uninstall", action="store_true")
+        parser.add_argument("--print", action="store_true", dest="printOnly")
+        parser.add_argument("-y", "--yes", action="store_true", dest="assumeYes")
+
+        parser.add_argument(
+            "--component",
+            choices=("auto", "mcp", "skill", "all"),
+            default="auto",
+            help="Choose MCP, Skills, both, or infer from the manifest.",
+        )
+        parser.add_argument(
+            "--scope",
+            choices=("user", "project"),
+            default="user",
+            help="Skill installation scope (separate from --cli-scope).",
+        )
+        parser.add_argument(
+            "--project-dir",
+            dest="projectDir",
+            help="Project root for project-scoped Skills (defaults to cwd).",
+        )
+
+        parser.add_argument(
+            "--env",
+            dest="envAssignments",
+            action="append",
+            metavar="KEY=VALUE",
+            help="Set an MCP env var; repeatable.",
+        )
+        parser.add_argument(
+            "--env-file",
+            dest="envFilePath",
+            help="Load MCP env vars from a KEY=VALUE file.",
+        )
+        parser.add_argument("--cli-scope", dest="cliScope", default="user")
+        parser.add_argument(
+            "--target",
+            dest="installTargets",
+            default="all",
+            help=(
+                "Comma-separated: all, claude-desktop, claude-code, codex, "
+                "grok-build, openmausbot. Aliases: claude-cli, codex-cli, "
+                "codex-desktop, grok."
+            ),
+        )
+
+        return parser
+
+    @classmethod
+    def fromCLI(cls) -> "InstallCommand":
+        args = cls.createParser().parse_args()
+        manifestPath = resolveAppConfigPath(args.appConfigPath)
+        return cls(args, loadAppConfig(args.appConfigPath), manifestPath)
+
+    def __init__(
+        self,
+        args: argparse.Namespace,
+        config: AppConfig,
+        manifestPath: pathlib.Path,
+    ):
+        self.args = args
+        self.config = config
+        self.manifestPath = manifestPath
+
+        self.serverName = args.serverName or config.serverName
+        self.entrypoint = args.entrypoint or config.entrypoint
+        self.installMCP = args.component in ("mcp", "all") or (
+            args.component == "auto" and bool(self.serverName or self.entrypoint)
+        )
+        self.installSkills = args.component in ("skill", "all") or (
+            args.component == "auto" and bool(config.skills)
+        )
+
+        self.targets = normalizeInstallTargets(
+            [part.strip() for part in args.installTargets.split(",") if part.strip()]
+        )
+        self.projectPath = (
+            pathlib.Path(args.projectDir).expanduser().resolve()
+            if args.projectDir
+            else pathlib.Path.cwd()
+        )
+        self.homePath = pathlib.Path.home()
+
+    @staticmethod
+    def _configPath(override: Optional[str], default: pathlib.Path) -> pathlib.Path:
+        if not override:
+            return default
+
+        return pathlib.Path(override).expanduser().resolve(strict=False)
+
+    def _buildBackends(self) -> Dict[str, AgentBackend]:
+        args = self.args
+        return buildAgentBackends(
+            self._configPath(args.configPath, getDefaultClaudeDesktopConfigPath()),
+            self._configPath(args.codexConfigPath, getDefaultCodexConfigPath()),
+            self._configPath(args.grokConfigPath, getDefaultGrokConfigPath()),
+            self._configPath(
+                args.openMausBotConfigPath,
+                getDefaultOpenMausBotConfigPath(),
+            ),
+            args.cliScope,
+        )
+
+    def _validate(self, backends: Dict[str, AgentBackend]) -> None:
+        if self.args.printOnly and self.args.uninstall:
+            raise ValueError("--print cannot be combined with --uninstall")
+
+        if self.installMCP and not (self.serverName and self.entrypoint):
+            raise ValueError("MCP installation requires both serverName and entrypoint")
+        if self.installSkills and not self.config.skills:
+            raise ValueError("Skill component selected but no skills are configured")
+
+        if self.installSkills:
+            for target in self.targets:
+                backends[target].skillRoots(
+                    self.args.scope,
+                    self.homePath,
+                    self.projectPath,
+                )
+
+    def _collectEnv(self) -> Dict[str, str]:
+        overrides: Dict[str, str] = {}
+        if self.args.envFilePath:
+            envPath = pathlib.Path(self.args.envFilePath).expanduser().resolve(strict=False)
+            overrides.update(parseEnvFile(envPath))
+
+        for assignment in self.args.envAssignments or []:
+            key, value = parseEnvAssignment(assignment)
+            overrides[key] = value
+
+        env = collectEnv(overrides, self.config.envKeys)
+        for key, defaultValue in self.config.defaultEnvValues.items():
+            env.setdefault(key, defaultValue)
+
+        for key, warning in self.config.envWarnings.items():
+            if key not in env:
+                print(f"Warning: {warning}")
+
+        return env
+
+    def _buildEntry(self) -> Tuple[Dict[str, Any], Optional[str], Optional[str]]:
+        env = self._collectEnv()
+        binaryPath = (
+            os.environ.get(self.config.binaryEnvVar)
+            if self.config.binaryEnvVar
+            else None
+        )
+        uvxFrom = self.args.uvxFrom or inferUvxFromSpec(self.config.distributionName)
+
+        if binaryPath:
+            entry: Dict[str, Any] = {"command": binaryPath, "args": []}
+            if env:
+                entry["env"] = env
+
+            return entry, binaryPath, uvxFrom
+
+        _, entry = buildMcpServerEntry(self.serverName, uvxFrom, self.entrypoint, env)
+        return entry, None, uvxFrom
+
+    def _applyMCP(self, backend: AgentBackend, entry: Dict[str, Any]) -> bool:
+        if not backend.mcpAvailable:
+            print(f"Warning: {backend.label} was not found; skipped MCP registration.")
+            return False
+
+        if self.args.printOnly:
+            return False
+
+        result = (
+            backend.uninstall(self.serverName)
+            if self.args.uninstall
+            else backend.install(self.serverName, entry, self.args.overwrite)
+        )
+        action = "Removed" if self.args.uninstall else "Installed"
+        preposition = "from" if self.args.uninstall else "into"
+
+        print(f"{action} {self.serverName} {preposition} {result.label} config.")
         print(f"Config: {result.configPath}")
-        
+
         if result.backupPath:
             print(f"Backup: {result.backupPath}")
-            
         if not result.changed:
             print("No existing entry was found.")
-            
-        completedTargets.append(target)
 
-    if installSkills:
-        skillInstaller.apply(appConfig.skills, installTargets, args.scope, manifestPath, projectPath,
-                             overwrite=args.overwrite, uninstall=args.uninstall)
+        return True
 
-    if installMCP and not args.uninstall:
-        warmPyappBinary(binaryPath)
+    def _applySkills(
+        self,
+        backend: AgentBackend,
+        skills,
+        handledPaths: set[pathlib.Path],
+    ) -> None:
+        results = backend.installSkills(
+            skills,
+            self.args.scope,
+            self.homePath,
+            self.projectPath,
+            handledPaths,
+            overwrite=self.args.overwrite,
+            uninstall=self.args.uninstall,
+            printOnly=self.args.printOnly,
+        )
 
-    if any(target in completedTargets for target in {"claude-desktop", "codex", "grok-build", "openmausbot"}):
-        print("\nNext: restart your MCP client or reload its MCP servers.")
-    elif "claude-code" in completedTargets:
-        print("\nNext: restart Claude Code or reload MCP servers.")
+        for result in results:
+            if self.args.printOnly:
+                print(f"Skill {result.name}: {result.source} -> {result.target}: {result.destination}")
+                continue
 
-    if installMCP:
-        print(f"Server name: {serverName}")
+            action = "Removed" if self.args.uninstall else "Installed"
+            if self.args.uninstall and not result.changed:
+                action = "Not found"
+
+            print(f"{action} skill {result.name} at {result.destination}")
+            if result.backupPath:
+                print(f"Backup: {result.backupPath}")
+
+        if results and not self.args.printOnly and not self.args.uninstall and backend.skillNotice:
+            print(backend.skillNotice)
+
+    def _printSummary(
+        self,
+        completedTargets: list[str],
+        binaryPath: Optional[str],
+        uvxFrom: Optional[str],
+    ) -> None:
+        if not self.installMCP or self.args.printOnly:
+            return
+
+        if any(
+            target in completedTargets
+            for target in {"claude-desktop", "codex", "grok-build", "openmausbot"}
+        ):
+            print("\nNext: restart your MCP client or reload its MCP servers.")
+        elif "claude-code" in completedTargets:
+            print("\nNext: restart Claude Code or reload MCP servers.")
+
+        print(f"Server name: {self.serverName}")
         if binaryPath:
             print(f"Binary: {binaryPath}")
         elif uvxFrom:
             print(f"uvx source: {uvxFrom}")
         else:
-            print(f"uvx source: PyPI (uvx {entrypoint})")
+            print(f"uvx source: PyPI (uvx {self.entrypoint})")
+
+    def run(self) -> None:
+        backends = self._buildBackends()
+        self._validate(backends)
+
+        skills = (
+            SkillInstaller.prepare(
+                self.config.skills,
+                self.manifestPath,
+                uninstall=self.args.uninstall,
+            )
+            if self.installSkills
+            else []
+        )
+        entry, binaryPath, uvxFrom = (
+            self._buildEntry() if self.installMCP else ({}, None, None)
+        )
+
+        if self.args.printOnly and self.installMCP:
+            print(json.dumps({self.serverName: entry}, ensure_ascii=True, indent=2))
+
+        completedTargets = []
+        handledPaths: set[pathlib.Path] = set()
+
+        for target in self.targets:
+            backend = backends[target]
+            if self.installMCP and self._applyMCP(backend, entry):
+                completedTargets.append(target)
+
+            if self.installSkills:
+                self._applySkills(backend, skills, handledPaths)
+
+        if self.installMCP and not self.args.uninstall and not self.args.printOnly:
+            warmPyappBinary(binaryPath)
+
+        self._printSummary(completedTargets, binaryPath, uvxFrom)
+
+
+def main() -> None:
+    InstallCommand.fromCLI().run()
 
 
 if __name__ == "__main__":
