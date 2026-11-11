@@ -31,7 +31,7 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-from mcp_install.skills import SkillInstaller, SkillSpec
+from mcp_install.skills import PreparedSkill, SkillInstaller, SkillSpec
 
 from mcp_install.backends import (
     ClaudeCliBackend,
@@ -259,6 +259,13 @@ def buildAgentBackends(
 class InstallCommand:
     """Runs a single Agent-target loop for every requested component."""
 
+    @staticmethod
+    def _configPath(override: Optional[str], default: pathlib.Path) -> pathlib.Path:
+        if not override:
+            return default
+
+        return pathlib.Path(override).expanduser().resolve(strict=False)
+
     @classmethod
     def createParser(cls) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser(
@@ -365,13 +372,6 @@ class InstallCommand:
         )
         self.homePath = pathlib.Path.home()
 
-    @staticmethod
-    def _configPath(override: Optional[str], default: pathlib.Path) -> pathlib.Path:
-        if not override:
-            return default
-
-        return pathlib.Path(override).expanduser().resolve(strict=False)
-
     def _buildBackends(self) -> Dict[str, AgentBackend]:
         args = self.args
         return buildAgentBackends(
@@ -470,7 +470,7 @@ class InstallCommand:
     def _applySkills(
         self,
         backend: AgentBackend,
-        skills,
+        skills: list[PreparedSkill],
         handledPaths: set[pathlib.Path],
     ) -> None:
         results = backend.installSkills(
