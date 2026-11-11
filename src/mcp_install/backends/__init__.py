@@ -22,7 +22,7 @@
 MCP standardizes the protocol between a host and a server, but each host owns
 its own registration format and location. ``Base`` holds the generic,
 client-agnostic mechanisms (JSON/TOML config-file editing, the
-``AgentBackend`` interface); ``Claude``/``Codex``/``Grok`` hold the thin,
+``AgentBackend`` interface); ``Claude``/``Codex``/``Grok``/``OpenCode`` hold the thin,
 client-specific classes and default-config-path lookups built on top of it.
 """
 
@@ -47,6 +47,7 @@ from .Claude import ClaudeCliBackend, ClaudeDesktopBackend, getClaudeCliPath, ge
 from .Codex import CodexBackend, getDefaultCodexConfigPath
 from .Grok import GrokBackend, getDefaultGrokConfigPath
 from .OpenMausBot import OpenMausBotBackend, getDefaultOpenMausBotConfigPath
+from .OpenCode import OpenCodeBackend, getDefaultOpenCodeConfigPath
 
 __all__ = [
     "AgentBackend",
@@ -74,4 +75,6 @@ __all__ = [
     "getDefaultGrokConfigPath",
     "OpenMausBotBackend",
     "getDefaultOpenMausBotConfigPath",
+    "OpenCodeBackend",
+    "getDefaultOpenCodeConfigPath",
 ]
