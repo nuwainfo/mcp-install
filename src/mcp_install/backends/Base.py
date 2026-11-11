@@ -245,13 +245,11 @@ class AgentBackend:
                 handledPaths.add(destination)
                 backupPath = None
                 changed = True
-
-                if printOnly:
-                    pass
-                elif uninstall:
-                    changed = SkillInstaller.uninstall(destination)
-                else:
-                    backupPath = SkillInstaller.install(skill, destination, overwrite)
+                if not printOnly:
+                    if uninstall:
+                        changed = SkillInstaller.uninstall(destination)
+                    else:
+                        backupPath = SkillInstaller.install(skill, destination, overwrite)
 
                 results.append(
                     SkillResult(
