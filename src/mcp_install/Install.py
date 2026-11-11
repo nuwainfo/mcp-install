@@ -40,11 +40,13 @@ from mcp_install.backends import (
     AgentBackend,
     GrokBackend,
     OpenMausBotBackend,
+    OpenCodeBackend,
     getClaudeCliPath,
     getDefaultClaudeDesktopConfigPath,
     getDefaultCodexConfigPath,
     getDefaultGrokConfigPath,
     getDefaultOpenMausBotConfigPath,
+    getDefaultOpenCodeConfigPath,
 )
 
 defaultAppConfigFilename = "install.config.json"
@@ -224,7 +226,7 @@ targetAliases = {
 
 def normalizeInstallTargets(rawTargets: list[str]) -> list[str]:
     if "all" in rawTargets:
-        rawTargets = ["claude-desktop", "claude-code", "codex", "grok-build", "openmausbot"]
+        rawTargets = ["claude-desktop", "claude-code", "codex", "grok-build", "openmausbot", "opencode"]
 
     targets = []
     for target in rawTargets:
@@ -232,7 +234,7 @@ def normalizeInstallTargets(rawTargets: list[str]) -> list[str]:
         if normalizedTarget not in targets:
             targets.append(normalizedTarget)
 
-    allowedTargets = {"claude-desktop", "claude-code", "codex", "grok-build", "openmausbot"}
+    allowedTargets = {"claude-desktop", "claude-code", "codex", "grok-build", "openmausbot", "opencode"}
     invalidTargets = [target for target in targets if target not in allowedTargets]
     if invalidTargets:
         raise ValueError(f"Invalid --target: {', '.join(invalidTargets)}")
@@ -244,6 +246,7 @@ def buildAgentBackends(
     codexConfigPath: pathlib.Path,
     grokConfigPath: pathlib.Path,
     openMausBotConfigPath: pathlib.Path,
+    openCodeConfigPath: pathlib.Path,
     cliScope: str,
 ) -> Dict[str, AgentBackend]:
     """Create one backend per Agent, even when an MCP CLI is unavailable."""
@@ -253,6 +256,7 @@ def buildAgentBackends(
         "codex": CodexBackend(codexConfigPath),
         "grok-build": GrokBackend(grokConfigPath),
         "openmausbot": OpenMausBotBackend(openMausBotConfigPath),
+        "opencode": OpenCodeBackend(openCodeConfigPath),
     }
 
 
@@ -283,6 +287,11 @@ class InstallCommand:
             "--openmausbot-config",
             dest="openMausBotConfigPath",
             help="OpenMausBot JSON config (defaults to OMB_DATA_DIR/config.json).",
+        )
+        parser.add_argument(
+            "--opencode-config",
+            dest="openCodeConfigPath",
+            help="OpenCode opencode.json(c) config (defaults to the global config).",
         )
 
         parser.add_argument("--server-name", dest="serverName", help="Override serverName.")
@@ -330,7 +339,7 @@ class InstallCommand:
             default="all",
             help=(
                 "Comma-separated: all, claude-desktop, claude-code, codex, "
-                "grok-build, openmausbot. Aliases: claude-cli, codex-cli, "
+                "grok-build, openmausbot, opencode. Aliases: claude-cli, codex-cli, "
                 "codex-desktop, grok."
             ),
         )
@@ -374,6 +383,15 @@ class InstallCommand:
 
     def _buildBackends(self) -> Dict[str, AgentBackend]:
         args = self.args
+        openCodeConfigPath = (
+            self._configPath(args.openCodeConfigPath, getDefaultOpenCodeConfigPath())
+            if "opencode" in self.targets and not args.openCodeConfigPath
+            else self._configPath(
+                args.openCodeConfigPath,
+                pathlib.Path.home() / ".config/opencode/opencode.jsonc",
+            )
+        )
+
         return buildAgentBackends(
             self._configPath(args.configPath, getDefaultClaudeDesktopConfigPath()),
             self._configPath(args.codexConfigPath, getDefaultCodexConfigPath()),
@@ -382,6 +400,7 @@ class InstallCommand:
                 args.openMausBotConfigPath,
                 getDefaultOpenMausBotConfigPath(),
             ),
+            openCodeConfigPath,
             args.cliScope,
         )
 
@@ -511,7 +530,7 @@ class InstallCommand:
 
         if any(
             target in completedTargets
-            for target in {"claude-desktop", "codex", "grok-build", "openmausbot"}
+            for target in {"claude-desktop", "codex", "grok-build", "openmausbot", "opencode"}
         ):
             print("\nNext: restart your MCP client or reload its MCP servers.")
         elif "claude-code" in completedTargets:
