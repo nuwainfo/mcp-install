@@ -38,6 +38,10 @@ class OpenCodeTest(unittest.TestCase):
         (source / "assets" / "example.txt").write_text("example asset")
 
         self.manifest = self.project / "install.config.json"
+        xdgPatch = mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": ""})
+        xdgPatch.start()
+        self.addCleanup(xdgPatch.stop)
+
         self.entry = {
             "command": "uvx",
             "args": ["--from", "git+https://example.com/repo", "example-mcp"],
@@ -223,6 +227,20 @@ class OpenCodeTest(unittest.TestCase):
         )
         projectSkill = self.project / ".opencode/skills/sample"
         self.assertTrue((projectSkill / "SKILL.md").is_file())
+
+    def testXdgSkillRootUsesConfiguredDirectory(self):
+        backend = OpenCodeBackend(self.configPath)
+
+        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(self.base)}):
+            self.assertEqual(
+                [self.base / "opencode/skills"],
+                backend.skillRoots("user", self.home, self.project),
+            )
+
+            self.assertEqual(
+                [self.project / ".opencode/skills"],
+                backend.skillRoots("project", self.home, self.project),
+            )
 
     def testUnifiedCLIInstallsBothComponents(self):
         self.manifest.write_text(json.dumps({
