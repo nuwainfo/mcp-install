@@ -9,6 +9,8 @@ import re
 import shutil
 import tempfile
 
+import yaml
+
 from dataclasses import dataclass
 from typing import Optional
 
@@ -44,7 +46,7 @@ class SkillInstaller:
 
     @classmethod
     def _validateName(cls, name: str) -> str:
-        if not cls._NAME.fullmatch(name):
+        if len(name) > 64 or not cls._NAME.fullmatch(name):
             raise ValueError(
                 f"Invalid skill name: {name!r} (use lowercase letters, digits and hyphens)"
             )
@@ -52,7 +54,48 @@ class SkillInstaller:
         return name
 
     @classmethod
-    def _source(cls, spec: SkillSpec, manifestPath: pathlib.Path) -> pathlib.Path:
+    def _validateFrontmatter(cls, skillFile: pathlib.Path, expectedName: str) -> None:
+        lines = skillFile.read_text(encoding="utf-8").splitlines()
+        if len(lines) < 3 or lines[0] != "---":
+            raise ValueError(f"SKILL.md requires YAML frontmatter: {skillFile}")
+
+        try:
+            closingLine = lines.index("---", 1)
+        except ValueError as exc:
+            raise ValueError(f"SKILL.md has unclosed YAML frontmatter: {skillFile}") from exc
+
+        try:
+            metadata = yaml.load(
+                "\n".join(lines[1:closingLine]),
+                Loader=yaml.BaseLoader,
+            )
+        except yaml.YAMLError as exc:
+            raise ValueError(f"Invalid YAML frontmatter in {skillFile}: {exc}") from exc
+
+        if not isinstance(metadata, dict):
+            raise ValueError(f"SKILL.md frontmatter must be a mapping: {skillFile}")
+
+        name = metadata.get("name")
+        if not isinstance(name, str) or len(name) > 64 or not cls._NAME.fullmatch(name):
+            raise ValueError(f"SKILL.md requires a valid name (max 64 characters): {skillFile}")
+        if name != expectedName:
+            raise ValueError(
+                f"SKILL.md name {name!r} must match installed directory {expectedName!r}"
+            )
+
+        description = metadata.get("description")
+        if not isinstance(description, str) or not description.strip() or len(description) > 1024:
+            raise ValueError(
+                f"SKILL.md requires a non-empty description (max 1024 characters): {skillFile}"
+            )
+
+    @classmethod
+    def _source(
+        cls,
+        spec: SkillSpec,
+        manifestPath: pathlib.Path,
+        expectedName: str,
+    ) -> pathlib.Path:
         relative = pathlib.PurePath(spec.path)
         if (
             "\\" in spec.path
@@ -82,9 +125,7 @@ class SkillInstaller:
         if not skillFile.is_file():
             raise ValueError(f"Missing SKILL.md in {source}")
 
-        text = skillFile.read_text(encoding="utf-8")
-        if not text.startswith("---\n"):
-            raise ValueError(f"SKILL.md requires YAML frontmatter: {skillFile}")
+        cls._validateFrontmatter(skillFile, expectedName)
 
         return source
 
@@ -159,7 +200,7 @@ class SkillInstaller:
         skills = []
         for spec in specs:
             name = cls._validateName(spec.name or pathlib.PurePath(spec.path).name)
-            source = None if uninstall else cls._source(spec, manifestPath)
+            source = None if uninstall else cls._source(spec, manifestPath, name)
             skills.append(PreparedSkill(name, source))
 
         names = [skill.name for skill in skills]
