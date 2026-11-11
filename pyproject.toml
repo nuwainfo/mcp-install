@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-install"
-version = "0.2.0"
-description = "Reusable installer for MCP servers and Agent Skills across Claude, Codex, Grok, and OpenMausBot"
+version = "0.3.0"
+description = "Reusable installer for MCP servers and Agent Skills across Claude, Codex, Grok, OpenMausBot, and OpenCode"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{name = "mcp-install contributors"}]
 license = "Apache-2.0"
-keywords = ["mcp", "model-context-protocol", "agent-skills", "installer", "claude", "codex", "grok", "openmausbot"]
+keywords = ["mcp", "model-context-protocol", "agent-skills", "installer", "claude", "codex", "grok", "openmausbot", "opencode"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
