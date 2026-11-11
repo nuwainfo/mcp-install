@@ -18,11 +18,14 @@
 # limitations under the License.
 """Tests for the external app-manifest mechanism (`install.config.json`)."""
 
+import contextlib
+import io
 import pathlib
 import tempfile
 import unittest
+from unittest import mock
 
-from mcp_install.Install import collectEnv, inferUvxFromSpec, loadAppConfig, parseEnvAssignment, parseEnvFile
+from mcp_install.Install import collectEnv, inferUvxFromSpec, loadAppConfig, main, parseEnvAssignment, parseEnvFile
 
 
 class AppConfigTest(unittest.TestCase):
@@ -56,6 +59,57 @@ class AppConfigTest(unittest.TestCase):
             configPath.write_text("{}", encoding="utf-8")
             with self.assertRaises(ValueError):
                 loadAppConfig(str(configPath))
+
+    def testSkillOnlyManifest(self):
+        with tempfile.TemporaryDirectory() as tempDir:
+            configPath = pathlib.Path(tempDir) / "install.config.json"
+            configPath.write_text('{"skills": [{"path": "skills/hello"}]}', encoding="utf-8")
+            appConfig = loadAppConfig(str(configPath))
+            self.assertIsNone(appConfig.serverName)
+            self.assertIsNone(appConfig.entrypoint)
+            self.assertEqual("skills/hello", appConfig.skills[0].path)
+
+    def testCombinedManifest(self):
+        with tempfile.TemporaryDirectory() as tempDir:
+            configPath = pathlib.Path(tempDir) / "install.config.json"
+            configPath.write_text(
+                '{"serverName": "demo", "entrypoint": "demo-mcp", "skills": [{"path": "skills/hello"}]}',
+                encoding="utf-8",
+            )
+            appConfig = loadAppConfig(str(configPath))
+            self.assertEqual("demo", appConfig.serverName)
+            self.assertEqual("skills/hello", appConfig.skills[0].path)
+
+    def testSkillOnlyPreviewDoesNotNeedMCP(self):
+        with tempfile.TemporaryDirectory() as tempDir:
+            base = pathlib.Path(tempDir)
+            skill = base / "skills" / "hello"
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text("---\nname: hello\ndescription: Example\n---\n")
+            configPath = base / "install.config.json"
+            configPath.write_text('{"skills": [{"path": "skills/hello"}]}')
+            args = ["install", "--app-config", str(configPath), "--target", "codex",
+                    "--component", "auto", "--print"]
+            with mock.patch("sys.argv", args), contextlib.redirect_stdout(io.StringIO()) as output:
+                main()
+            self.assertIn("Skill hello:", output.getvalue())
+            self.assertNotIn('"command": "uvx"', output.getvalue())
+
+    def testCombinedPreviewIncludesMCPAndSkill(self):
+        with tempfile.TemporaryDirectory() as tempDir:
+            base = pathlib.Path(tempDir)
+            skill = base / "skills" / "hello"
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text("---\nname: hello\ndescription: Example\n---\n")
+            configPath = base / "install.config.json"
+            configPath.write_text(
+                '{"serverName": "demo", "entrypoint": "demo-mcp", "skills": [{"path": "skills/hello"}]}'
+            )
+            args = ["install", "--app-config", str(configPath), "--target", "codex", "--print"]
+            with mock.patch("sys.argv", args), contextlib.redirect_stdout(io.StringIO()) as output:
+                main()
+            self.assertIn('"command": "uvx"', output.getvalue())
+            self.assertIn("Skill hello:", output.getvalue())
 
     def testParseEnvAssignmentSplitsOnFirstEquals(self):
         self.assertEqual(parseEnvAssignment("KEY=a=b"), ("KEY", "a=b"))

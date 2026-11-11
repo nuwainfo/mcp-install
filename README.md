@@ -1,7 +1,7 @@
 # mcp-install
 
-A reusable, app-agnostic installer for registering stdio MCP servers with
-Claude Desktop, Claude Code, Codex, and Grok Build.
+A reusable, app-agnostic installer for registering stdio MCP servers and deploying
+Agent Skills to Claude Code, Codex, and Grok Build. MCP registration also supports Claude Desktop.
 
 This package has **no knowledge of any specific MCP server**. Every
 app-specific detail — server name, entrypoint command, which env vars to
@@ -106,3 +106,46 @@ mcp-install/
 ```bash
 python -m unittest discover -s tests -p "*Test.py" -v
 ```
+
+## Agent Skills
+
+A consuming project may ship just Skills, just an MCP server, or both. Skills
+are copied as complete directories (including `scripts/`, `references/`, and
+`assets/`) from paths **relative to the manifest directory**. Every Skill
+must include a UTF-8 `SKILL.md` with YAML frontmatter.
+
+Skill-only manifest:
+
+```json
+{
+  "skills": [
+    {"path": "skills/my-skill"}
+  ]
+}
+```
+
+Add the same `skills` array to the existing MCP manifest to install both.
+The `name` field is optional and defaults to the Skill directory's basename.
+Skill names use lowercase letters, numbers and hyphens.
+
+```bash
+install --component auto --target all                 # default: install whatever the manifest provides
+install --component skill --target claude-code,codex  # only Skills
+install --component mcp --target claude-code          # only MCP
+install --component all --target codex                # require both
+install --component skill --scope project --project-dir .
+install --component skill --print                      # preview destinations without writing
+install --component skill --uninstall --target codex  # remove owned Skill directories
+```
+
+| Target | User-level Skills | Project-level Skills |
+|---|---|---|
+| `claude-code` | `~/.claude/skills` | `.claude/skills` |
+| `codex` | `~/.agents/skills` | `.agents/skills` |
+| `grok-build` | `~/.grok/skills` | `.grok/skills` |
+| `claude-desktop` | Not supported by filesystem installer; use Claude Desktop's Skill importer | — |
+
+Existing directories are preserved unless `--overwrite` is passed; overwrites
+receive a timestamped backup. `--uninstall` only deletes directories marked as
+managed by mcp-install. Symbolic links and paths escaping the manifest root are
+rejected. The standalone Skills flow does not require `uvx` or an MCP server.
