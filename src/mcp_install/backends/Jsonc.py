@@ -189,13 +189,11 @@ class JsoncDocument:
 
     def _addMember(self, objectStart: int, key: str, value: Any) -> None:
         members, closePosition = self._members(objectStart)
-        prefix = self.text[:closePosition]
-        suffix = self.text[closePosition:]
         closeLineStart = self.text.rfind("\n", objectStart, closePosition) + 1
         closingIndent = self.text[closeLineStart:closePosition]
         multiline = "\n" in self.text[objectStart:closePosition]
 
-        if multiline and closingIndent.isspace() or multiline and not closingIndent:
+        if multiline and not closingIndent.strip():
             itemIndent = closingIndent + "  "
             item = (
                 f"{itemIndent}{json.dumps(key)}: "
@@ -216,7 +214,7 @@ class JsoncDocument:
             separator = ""
 
         item = f"{separator}{json.dumps(key)}: {json.dumps(value, ensure_ascii=True)}"
-        self.text = prefix + item + suffix
+        self.text = self.text[:closePosition] + item + self.text[closePosition:]
 
     def set(self, path: tuple[str, ...], value: Any) -> None:
         if not path:
