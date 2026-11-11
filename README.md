@@ -1,7 +1,7 @@
 # mcp-install
 
 A reusable, app-agnostic installer for registering stdio MCP servers and deploying
-Agent Skills to Claude Code, Codex, Grok Build, and OpenMausBot. MCP registration also supports Claude Desktop.
+Agent Skills to Claude Code, Codex, Grok Build, OpenMausBot, and OpenCode. MCP registration also supports Claude Desktop.
 
 This package has **no knowledge of any specific MCP server**. Every
 app-specific detail — server name, entrypoint command, which env vars to
@@ -66,7 +66,7 @@ pip install -e ../mcp-install
 
 ```bash
 install --print                                    # preview the entry, no writes
-install --target claude-desktop,claude-code,codex,grok-build,openmausbot
+install --target claude-desktop,claude-code,codex,grok-build,openmausbot,opencode
 install --env ALLOWED_BASE_DIR=~/Downloads          # repeatable KEY=VALUE
 install --env-file .env.install                     # KEY=VALUE per line
 install --overwrite
@@ -74,6 +74,7 @@ install --config /path/to/claude_desktop_config.json
 install --codex-config /path/to/codex/config.toml
 install --grok-config /path/to/grok/config.toml
 install --openmausbot-config /path/to/openmausbot/config.json
+install --opencode-config /path/to/opencode/opencode.jsonc
 install --uninstall --target claude-code
 install --app-config /path/to/install.config.json   # override manifest lookup
 ```
@@ -82,13 +83,18 @@ install --app-config /path/to/install.config.json   # override manifest lookup
 override its location with `--app-config` or the `INSTALL_APP_CONFIG` env var.
 
 `--target` accepts `all` (default), `claude-desktop`, `claude-code`, `codex`,
-`grok-build`, `openmausbot`. Legacy aliases `claude-cli`, `codex-cli`,
+`grok-build`, `openmausbot`, `opencode`. Legacy aliases `claude-cli`, `codex-cli`,
 `codex-desktop`, and
 `grok` are accepted and normalized. `claude-code` registers via the Claude
 Code CLI (`claude mcp add-json`); `claude-desktop` writes JSON; `codex`/
 `grok-build` write TOML; `openmausbot` writes JSON to `~/.openmausbot/config.json`
 (or `$OMB_DATA_DIR/config.json`). Use `--openmausbot-config` to override the path.
-Existing configuration files are backed up before changes.
+OpenCode stores MCP servers under `mcp.servers` in its user-level
+`~/.config/opencode/opencode.json(c)` file. The installer reuses whichever
+JSON/JSONC file already exists, preserving unrelated settings and comments;
+`--opencode-config` can select a project file or another location. This targets
+the current OpenCode V2 format. Existing configuration files are backed up
+before changes.
 
 ## Testing
 
@@ -137,12 +143,14 @@ install --component skill --uninstall --target codex  # remove owned Skill direc
 | `codex` | `~/.agents/skills` | `.agents/skills` |
 | `grok-build` | `~/.grok/skills` | `.grok/skills` |
 | `openmausbot` | `~/.claude/skills` and `~/.codex/skills` (staging for import) | Not supported |
+| `opencode` | `~/.config/opencode/skills` | `.opencode/skills` |
 | `claude-desktop` | Not supported by filesystem installer; use Claude Desktop's Skill importer | — |
 
 Existing directories are preserved unless `--overwrite` is passed; overwrites
 receive a timestamped backup. `--uninstall` only deletes directories marked as
 managed by mcp-install. Symbolic links and paths escaping the manifest root are
 rejected. The standalone Skills flow does not require `uvx`, an MCP server, or a Claude Code CLI.
+OpenCode Skills use its native folders; an OpenCode executable is not required.
 
 For `openmausbot`, staged Skills must be imported via **Settings → Replay welcome
 tour → Bring what you already use** and reviewed/enabled in OpenMausBot. This
