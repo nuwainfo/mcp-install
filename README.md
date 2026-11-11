@@ -11,6 +11,19 @@ itself — is read from a small JSON manifest (`install.config.json`) that each
 consuming project ships on its own. Point `mcp_install.Install` at your
 manifest and it needs no code changes.
 
+## Supported backends
+
+| Backend | `--target` | MCP | Agent Skills |
+|---|---|---|---|
+| Claude Desktop | `claude-desktop` | Supported | Not supported by filesystem installer |
+| Claude Code | `claude-code` | Supported | Supported |
+| Codex | `codex` | Supported | Supported |
+| Grok Build | `grok-build` | Supported | Supported |
+| OpenMausBot | `openmausbot` | Supported | Staged for review and import in OpenMausBot |
+| OpenCode | `opencode` | Supported | Supported |
+
+Use `--target all` (the default) to select every backend, or provide a comma-separated list of targets. See [Agent Skills](#agent-skills) for installation scopes and destinations.
+
 ## Installing
 
 ```bash
