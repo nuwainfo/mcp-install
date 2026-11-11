@@ -17,18 +17,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Native MCP-client configuration backends.
+"""Agent backends for MCP registration and Skill installation.
 
 MCP standardizes the protocol between a host and a server, but each host owns
 its own registration format and location. ``Base`` holds the generic,
 client-agnostic mechanisms (JSON/TOML config-file editing, the
-``ConfigBackend`` interface); ``Claude``/``Codex``/``Grok`` hold the thin,
+``AgentBackend`` interface); ``Claude``/``Codex``/``Grok`` hold the thin,
 client-specific classes and default-config-path lookups built on top of it.
 """
 
 from .Base import (
-    ConfigBackend,
+    AgentBackend,
     InstallResult,
+    SkillResult,
     JsonMcpBackend,
     TomlMcpBackend,
     backupFile,
@@ -48,8 +49,9 @@ from .Grok import GrokBackend, getDefaultGrokConfigPath
 from .OpenMausBot import OpenMausBotBackend, getDefaultOpenMausBotConfigPath
 
 __all__ = [
-    "ConfigBackend",
+    "AgentBackend",
     "InstallResult",
+    "SkillResult",
     "JsonMcpBackend",
     "TomlMcpBackend",
     "backupFile",

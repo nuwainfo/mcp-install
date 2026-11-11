@@ -38,5 +38,8 @@ def getDefaultGrokConfigPath() -> pathlib.Path:
 class GrokBackend(TomlMcpBackend):
     """Grok Build's ``mcp_servers`` TOML configuration file."""
 
+    _userSkillPaths = (".grok/skills",)
+    _projectSkillPaths = (".grok/skills",)
+
     def __init__(self, configPath: pathlib.Path):
         super().__init__("grok-build", "Grok Build", configPath)

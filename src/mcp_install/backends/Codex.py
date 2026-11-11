@@ -33,5 +33,8 @@ def getDefaultCodexConfigPath() -> pathlib.Path:
 class CodexBackend(TomlMcpBackend):
     """Codex's ``mcp_servers`` TOML configuration file."""
 
+    _userSkillPaths = (".agents/skills",)
+    _projectSkillPaths = (".agents/skills",)
+
     def __init__(self, configPath: pathlib.Path):
         super().__init__("codex", "Codex", configPath)

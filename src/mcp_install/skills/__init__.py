@@ -1,3 +1,5 @@
-from .Installer import SkillInstaller, SkillSpec
+"""Shared Skill manifest and filesystem operations; Agent paths live in backends."""
 
-__all__ = ["SkillInstaller", "SkillSpec"]
+from .Installer import PreparedSkill, SkillInstaller, SkillSpec
+
+__all__ = ["PreparedSkill", "SkillInstaller", "SkillSpec"]

@@ -7,9 +7,8 @@ import tempfile
 import unittest
 from unittest import mock
 
-from mcp_install.backends import OpenMausBotBackend, getDefaultOpenMausBotConfigPath
+from mcp_install.backends import ClaudeCliBackend, OpenMausBotBackend, getDefaultOpenMausBotConfigPath
 from mcp_install.skills import SkillInstaller, SkillSpec
-from mcp_install.skills.OpenMausBot import OpenMausBotSkillBackend
 from mcp_install.Install import normalizeInstallTargets
 
 
@@ -51,26 +50,62 @@ class OpenMausBotTest(unittest.TestCase):
             self.assertEqual(self.base / "config.json", getDefaultOpenMausBotConfigPath())
 
     def testOpenMausBotStagingUsesTwoReviewedImportSources(self):
-        installer = SkillInstaller(self.home)
-        installer.apply(
-            [SkillSpec("skills/hello")], ["claude-code", "openmausbot"],
-            "user", self.manifest, self.project,
+        prepared = SkillInstaller.prepare(
+            [SkillSpec("skills/hello")],
+            self.manifest,
         )
+        backend = OpenMausBotBackend(self.base / "config.json")
+        claude = ClaudeCliBackend(None, "user")
+        handledPaths = set()
+
+        claude.installSkills(
+            prepared,
+            "user",
+            self.home,
+            self.project,
+            handledPaths,
+        )
+        results = backend.installSkills(
+            prepared,
+            "user",
+            self.home,
+            self.project,
+            handledPaths,
+        )
+
+        self.assertEqual(1, len(results))
+        self.assertEqual("openmausbot", results[0].target)
+
         for root in (".claude/skills", ".codex/skills"):
             destination = self.home / root / "hello"
             self.assertTrue((destination / "SKILL.md").is_file())
-            self.assertEqual("example", (destination / "assets" / "sample.txt").read_text())
+            self.assertEqual(
+                "example",
+                (destination / "assets/sample.txt").read_text(),
+            )
+
         self.assertEqual([], list((self.home / ".claude/skills").glob("hello.bak_*")))
-        installer.apply(
-            [SkillSpec("skills/hello")], ["claude-code", "openmausbot"],
-            "user", self.manifest, self.project, uninstall=True,
+
+        removed = SkillInstaller.prepare(
+            [SkillSpec("skills/hello")],
+            self.manifest,
+            uninstall=True,
+        )
+        handledPaths.clear()
+
+        claude.installSkills(
+            removed, "user", self.home, self.project, handledPaths, uninstall=True
+        )
+        backend.installSkills(
+            removed, "user", self.home, self.project, handledPaths, uninstall=True
         )
         self.assertFalse((self.home / ".codex/skills/hello").exists())
 
     def testProjectScopeIsRejected(self):
-        backend = OpenMausBotSkillBackend()
+        backend = OpenMausBotBackend(self.base / "config.json")
+
         with self.assertRaises(ValueError):
-            backend.roots("project", self.home, self.project)
+            backend.skillRoots("project", self.home, self.project)
 
     def testAllIncludesOpenMausBot(self):
         self.assertIn("openmausbot", normalizeInstallTargets(["all"]))

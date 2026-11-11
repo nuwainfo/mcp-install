@@ -28,7 +28,7 @@ import shutil
 
 from typing import Any, Dict, Optional
 
-from .Base import ConfigBackend, InstallResult, JsonMcpBackend, runCommand
+from .Base import AgentBackend, InstallResult, JsonMcpBackend, runCommand
 
 
 def getDefaultClaudeDesktopConfigPath() -> pathlib.Path:
@@ -95,7 +95,7 @@ class ClaudeDesktopBackend(JsonMcpBackend):
         super().__init__("claude-desktop", "Claude Desktop", configPath)
 
 
-class ClaudeCliBackend(ConfigBackend):
+class ClaudeCliBackend(AgentBackend):
     """Claude Code's CLI-based registration (``claude mcp add-json`` / ``remove``).
 
     Unlike the file-editing backends, there is no config file for this process
@@ -104,25 +104,44 @@ class ClaudeCliBackend(ConfigBackend):
     summary output; `backupPath` is always None since there is no file to back up.
     """
 
-    def __init__(self, cliPath: str, scope: str):
-        super().__init__("claude-code", f"Claude Code CLI (scope: {scope})", pathlib.Path(cliPath))
+    _userSkillPaths = (".claude/skills",)
+    _projectSkillPaths = (".claude/skills",)
+
+    def __init__(self, cliPath: Optional[str], scope: str):
+        super().__init__(
+            "claude-code",
+            f"Claude Code CLI (scope: {scope})",
+            pathlib.Path(cliPath or "claude"),
+        )
         self.cliPath = cliPath
         self.scope = scope
 
+    @property
+    def mcpAvailable(self) -> bool:
+        return self.cliPath is not None
+
+    def _requireCLI(self) -> str:
+        if self.cliPath is None:
+            raise FileNotFoundError("Claude Code CLI was not found")
+
+        return self.cliPath
+
     def install(self, serverName: str, entry: Dict[str, Any], overwrite: bool) -> InstallResult:
+        cliPath = self._requireCLI()
         command = [
-            self.cliPath, "mcp", "add-json", "-s", self.scope, serverName,
+            cliPath, "mcp", "add-json", "-s", self.scope, serverName,
             json.dumps(entry, ensure_ascii=True),
         ]
 
         if overwrite:
-            runCommand([self.cliPath, "mcp", "remove", "-s", self.scope, serverName], allowFailure=True)
+            runCommand([cliPath, "mcp", "remove", "-s", self.scope, serverName], allowFailure=True)
 
         runCommand(command)
 
         return InstallResult(self.target, self.label, self.configPath, None, changed=True)
 
     def uninstall(self, serverName: str) -> InstallResult:
-        runCommand([self.cliPath, "mcp", "remove", "-s", self.scope, serverName], allowFailure=True)
+        cliPath = self._requireCLI()
+        runCommand([cliPath, "mcp", "remove", "-s", self.scope, serverName], allowFailure=True)
 
         return InstallResult(self.target, self.label, self.configPath, None, changed=True)

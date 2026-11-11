@@ -17,17 +17,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Generic, client-agnostic MCP install-backend mechanisms.
-
-MCP standardizes the protocol between a host and a server, but each host owns
-its own registration format and location. This module holds the two shared
-mechanisms every file-editing client reuses — a JSON ``mcpServers`` file and a
-TOML ``mcp_servers`` file — plus the ``ConfigBackend`` interface both
-implement and the raw file/TOML helpers they're built on. Nothing in this
-module names a specific client (Claude, Codex, ...); that lives in its own
-sibling module (``Claude.py``, ``Codex.py``, ``Grok.py``, ...) which imports
-from here.
-"""
+"""Shared Agent backend behavior and reusable MCP configuration mechanisms."""
 
 from __future__ import annotations
 
@@ -41,6 +31,8 @@ import tempfile
 
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
+
+from mcp_install.skills import PreparedSkill, SkillInstaller
 
 
 def runCommand(command: list[str], allowFailure: bool = False) -> None:
@@ -178,13 +170,99 @@ class InstallResult:
     changed: bool
 
 
-class ConfigBackend:
-    """A client-owned config file (or CLI) that can register one stdio MCP server."""
+@dataclass(frozen=True)
+class SkillResult:
+    target: str
+    name: str
+    source: Optional[pathlib.Path]
+    destination: pathlib.Path
+    backupPath: Optional[pathlib.Path]
+    changed: bool
+
+
+class AgentBackend:
+    """One Agent owns both its MCP registration and Skill destinations."""
+
+    _userSkillPaths: tuple[str, ...] = ()
+    _projectSkillPaths: Optional[tuple[str, ...]] = None
 
     def __init__(self, target: str, label: str, configPath: pathlib.Path):
         self.target = target
         self.label = label
         self.configPath = configPath
+
+    @property
+    def mcpAvailable(self) -> bool:
+        return True
+
+    @property
+    def skillNotice(self) -> Optional[str]:
+        return None
+
+    def skillRoots(
+        self,
+        scope: str,
+        homePath: pathlib.Path,
+        projectPath: pathlib.Path,
+    ) -> list[pathlib.Path]:
+        if not self._userSkillPaths:
+            return []
+
+        if scope == "user":
+            root = homePath
+            paths = self._userSkillPaths
+        elif scope == "project":
+            if self._projectSkillPaths is None:
+                raise ValueError(f"{self.target} does not support project-scoped skills")
+
+            root = projectPath
+            paths = self._projectSkillPaths
+        else:
+            raise ValueError(f"Invalid skill scope: {scope}")
+
+        return [root / path for path in paths]
+
+    def installSkills(
+        self,
+        skills: list[PreparedSkill],
+        scope: str,
+        homePath: pathlib.Path,
+        projectPath: pathlib.Path,
+        handledPaths: set[pathlib.Path],
+        overwrite: bool = False,
+        uninstall: bool = False,
+        printOnly: bool = False,
+    ) -> list[SkillResult]:
+        roots = self.skillRoots(scope, homePath, projectPath)
+        results = []
+
+        for skill in skills:
+            for root in roots:
+                destination = root / skill.name
+                if destination in handledPaths:
+                    continue
+
+                handledPaths.add(destination)
+                backupPath = None
+                changed = True
+                if not printOnly:
+                    if uninstall:
+                        changed = SkillInstaller.uninstall(destination)
+                    else:
+                        backupPath = SkillInstaller.install(skill, destination, overwrite)
+
+                results.append(
+                    SkillResult(
+                        target=self.target,
+                        name=skill.name,
+                        source=skill.source,
+                        destination=destination,
+                        backupPath=backupPath,
+                        changed=changed,
+                    )
+                )
+
+        return results
 
     def install(self, serverName: str, entry: Dict[str, Any], overwrite: bool) -> InstallResult:
         raise NotImplementedError
@@ -193,7 +271,7 @@ class ConfigBackend:
         raise NotImplementedError
 
 
-class JsonMcpBackend(ConfigBackend):
+class JsonMcpBackend(AgentBackend):
     """A client's JSON ``mcpServers`` configuration file (e.g. Claude Desktop)."""
 
     def install(self, serverName: str, entry: Dict[str, Any], overwrite: bool) -> InstallResult:
@@ -227,7 +305,7 @@ class JsonMcpBackend(ConfigBackend):
         return InstallResult(self.target, self.label, self.configPath, backupPath, changed=True)
 
 
-class TomlMcpBackend(ConfigBackend):
+class TomlMcpBackend(AgentBackend):
     """A client's ``mcp_servers`` TOML configuration file (e.g. Codex, Grok Build)."""
 
     def install(self, serverName: str, entry: Dict[str, Any], overwrite: bool) -> InstallResult:
