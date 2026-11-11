@@ -41,6 +41,8 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+from mcp_install.skills import SkillInstaller, SkillSpec
+
 from mcp_install.backends import (
     ClaudeCliBackend,
     ClaudeDesktopBackend,
@@ -59,8 +61,9 @@ appConfigEnvVar = "INSTALL_APP_CONFIG"
 
 @dataclass(frozen=True)
 class AppConfig:
-    serverName: str
-    entrypoint: str
+    serverName: Optional[str]
+    entrypoint: Optional[str]
+    skills: List[SkillSpec] = field(default_factory=list)
     envKeys: List[str] = field(default_factory=list)
     distributionName: Optional[str] = None
     binaryEnvVar: Optional[str] = None
@@ -88,13 +91,17 @@ def loadAppConfig(explicitPath: Optional[str]) -> AppConfig:
         )
 
     data = json.loads(configPath.read_text(encoding="utf-8"))
-    missingKeys = [key for key in ("serverName", "entrypoint") if key not in data]
-    if missingKeys:
-        raise ValueError(f"{configPath} is missing required key(s): {', '.join(missingKeys)}")
+    skillData = data.get("skills", [])
+    if not isinstance(skillData, list):
+        raise ValueError(f"{configPath}: skills must be a list")
+    skills = [SkillSpec.fromDict(item) for item in skillData]
+    if not skills and not (data.get("serverName") and data.get("entrypoint")):
+        raise ValueError(f"{configPath}: configure an MCP server, a skill, or both")
 
     return AppConfig(
-        serverName=data["serverName"],
-        entrypoint=data["entrypoint"],
+        serverName=data.get("serverName"),
+        entrypoint=data.get("entrypoint"),
+        skills=skills,
         envKeys=list(data.get("envKeys", [])),
         distributionName=data.get("distributionName"),
         binaryEnvVar=data.get("binaryEnvVar"),
@@ -269,6 +276,12 @@ def main() -> None:
     parser.add_argument("--entrypoint", dest="entrypoint", help="Overrides the app config's entrypoint.")
     parser.add_argument("--from", dest="uvxFrom", help="Force uvx --from spec (e.g. git+https://...).")
     parser.add_argument("--overwrite", action="store_true", default=False)
+    parser.add_argument("--component", choices=("auto", "mcp", "skill", "all"), default="auto",
+                        help="Install MCP, Skills, both, or infer components from the manifest.")
+    parser.add_argument("--scope", choices=("user", "project"), default="user",
+                        help="Skill installation scope (independent of --cli-scope).")
+    parser.add_argument("--project-dir", dest="projectDir", default=None,
+                        help="Root directory used for project-scoped Skills (default: cwd).")
     parser.add_argument("--uninstall", action="store_true", default=False)
     parser.add_argument("--print", action="store_true", dest="printOnly")
     parser.add_argument(
@@ -292,6 +305,14 @@ def main() -> None:
     appConfig = loadAppConfig(args.appConfigPath)
     serverName = args.serverName or appConfig.serverName
     entrypoint = args.entrypoint or appConfig.entrypoint
+    if bool(serverName) != bool(entrypoint):
+        raise ValueError("MCP installation requires both serverName and entrypoint")
+    installMCP = args.component in ("mcp", "all") or (args.component == "auto" and bool(serverName))
+    installSkills = args.component in ("skill", "all") or (args.component == "auto" and bool(appConfig.skills))
+    if installMCP and not (serverName and entrypoint):
+        raise ValueError("MCP component was selected but serverName/entrypoint are missing")
+    if installSkills and not appConfig.skills:
+        raise ValueError("Skill component was selected but no skills are configured")
 
     if args.configPath:
         configPath = pathlib.Path(args.configPath).expanduser().resolve(strict=False)
@@ -327,8 +348,10 @@ def main() -> None:
 
     # When running as a standalone binary (e.g. PyApp), register the binary itself as
     # the MCP server command so end-users don't need uvx or Python installed.
-    binaryPath = os.environ.get(appConfig.binaryEnvVar) if appConfig.binaryEnvVar else None
-    if binaryPath:
+    binaryPath = os.environ.get(appConfig.binaryEnvVar) if installMCP and appConfig.binaryEnvVar else None
+    if not installMCP:
+        name, entry = "", {}
+    elif binaryPath:
         entry: Dict[str, Any] = {"command": binaryPath, "args": []}
         if env:
             entry["env"] = env
@@ -338,19 +361,25 @@ def main() -> None:
 
     if args.printOnly and args.uninstall:
         raise ValueError("--print cannot be combined with --uninstall")
-    if args.printOnly:
-        print(json.dumps({name: entry}, ensure_ascii=True, indent=2))
-        return
-
     installTargetsRaw = [part.strip() for part in args.installTargets.split(",") if part.strip()]
     installTargets = normalizeInstallTargets(installTargetsRaw)
-    configBackends = buildConfigBackends(configPath, codexConfigPath, grokConfigPath, args.cliScope)
+    skillInstaller = SkillInstaller()
+    manifestPath = resolveAppConfigPath(args.appConfigPath)
+    projectPath = pathlib.Path(args.projectDir).expanduser().resolve() if args.projectDir else pathlib.Path.cwd()
+    if args.printOnly:
+        if installMCP:
+            print(json.dumps({name: entry}, ensure_ascii=True, indent=2))
+        if installSkills:
+            skillInstaller.apply(appConfig.skills, installTargets, args.scope, manifestPath,
+                                 projectPath, printOnly=True)
+        return
+    configBackends = buildConfigBackends(configPath, codexConfigPath, grokConfigPath, args.cliScope) if installMCP else {}
     completedTargets = []
 
-    if "claude-code" in installTargets and "claude-code" not in configBackends:
+    if installMCP and "claude-code" in installTargets and "claude-code" not in configBackends:
         print("Warning: Claude Code CLI was not found; skipped claude-code.")
 
-    for target in installTargets:
+    for target in installTargets if installMCP else []:
         backend = configBackends.get(target)
         if backend is None:
             continue
@@ -372,7 +401,11 @@ def main() -> None:
             
         completedTargets.append(target)
 
-    if not args.uninstall:
+    if installSkills:
+        skillInstaller.apply(appConfig.skills, installTargets, args.scope, manifestPath, projectPath,
+                             overwrite=args.overwrite, uninstall=args.uninstall)
+
+    if installMCP and not args.uninstall:
         warmPyappBinary(binaryPath)
 
     if any(target in completedTargets for target in {"claude-desktop", "codex", "grok-build"}):
@@ -380,14 +413,14 @@ def main() -> None:
     elif "claude-code" in completedTargets:
         print("\nNext: restart Claude Code or reload MCP servers.")
 
-    print(f"Server name: {serverName}")
-
-    if binaryPath:
-        print(f"Binary: {binaryPath}")
-    elif uvxFrom:
-        print(f"uvx source: {uvxFrom}")
-    else:
-        print(f"uvx source: PyPI (uvx {entrypoint})")
+    if installMCP:
+        print(f"Server name: {serverName}")
+        if binaryPath:
+            print(f"Binary: {binaryPath}")
+        elif uvxFrom:
+            print(f"uvx source: {uvxFrom}")
+        else:
+            print(f"uvx source: PyPI (uvx {entrypoint})")
 
 
 if __name__ == "__main__":
