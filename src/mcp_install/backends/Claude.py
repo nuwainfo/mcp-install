@@ -134,7 +134,10 @@ class ClaudeCliBackend(AgentBackend):
         ]
 
         if overwrite:
-            runCommand([cliPath, "mcp", "remove", "-s", self.scope, serverName], allowFailure=True)
+            runCommand(
+                [cliPath, "mcp", "remove", "-s", self.scope, serverName],
+                allowedFailureText="No MCP server found with name:",
+            )
 
         runCommand(command)
 
@@ -142,6 +145,6 @@ class ClaudeCliBackend(AgentBackend):
 
     def uninstall(self, serverName: str) -> InstallResult:
         cliPath = self._requireCLI()
-        runCommand([cliPath, "mcp", "remove", "-s", self.scope, serverName], allowFailure=True)
+        runCommand([cliPath, "mcp", "remove", "-s", self.scope, serverName])
 
         return InstallResult(self.target, self.label, self.configPath, None, changed=True)

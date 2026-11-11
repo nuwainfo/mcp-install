@@ -300,6 +300,12 @@ class InstallCommand:
         parser.add_argument("--overwrite", action="store_true")
         parser.add_argument("--uninstall", action="store_true")
         parser.add_argument("--print", action="store_true", dest="printOnly")
+        parser.add_argument(
+            "--show-secrets",
+            action="store_true",
+            dest="showSecrets",
+            help="With --print, reveal MCP environment values (unsafe for shared logs).",
+        )
         parser.add_argument("-y", "--yes", action="store_true", dest="assumeYes")
 
         parser.add_argument(
@@ -371,9 +377,12 @@ class InstallCommand:
             args.component == "auto" and bool(config.skills)
         )
 
-        self.targets = normalizeInstallTargets(
-            [part.strip() for part in args.installTargets.split(",") if part.strip()]
-        )
+        rawTargets = [
+            part.strip() for part in args.installTargets.split(",") if part.strip()
+        ]
+        self.allTargets = "all" in rawTargets
+        self.targets = normalizeInstallTargets(rawTargets)
+        self.skillTargets: list[str] = []
         self.projectPath = (
             pathlib.Path(args.projectDir).expanduser().resolve()
             if args.projectDir
@@ -404,6 +413,8 @@ class InstallCommand:
     def _validate(self, backends: Dict[str, AgentBackend]) -> None:
         if self.args.printOnly and self.args.uninstall:
             raise ValueError("--print cannot be combined with --uninstall")
+        if self.args.showSecrets and not self.args.printOnly:
+            raise ValueError("--show-secrets requires --print")
 
         if self.installMCP and not (self.serverName and self.entrypoint):
             raise ValueError("MCP installation requires both serverName and entrypoint")
@@ -412,11 +423,20 @@ class InstallCommand:
 
         if self.installSkills:
             for target in self.targets:
-                backends[target].skillRoots(
+                backend = backends[target]
+                if (
+                    self.allTargets
+                    and self.args.scope == "project"
+                    and not backend.supportsProjectSkills
+                ):
+                    continue
+
+                backend.skillRoots(
                     self.args.scope,
                     self.homePath,
                     self.projectPath,
                 )
+                self.skillTargets.append(target)
 
     def _collectEnv(self) -> Dict[str, str]:
         overrides: Dict[str, str] = {}
@@ -559,7 +579,13 @@ class InstallCommand:
         )
 
         if self.args.printOnly and self.installMCP:
-            print(json.dumps({self.serverName: entry}, ensure_ascii=True, indent=2))
+            previewEntry = entry.copy()
+            if "env" in entry and not self.args.showSecrets:
+                previewEntry["env"] = {
+                    key: "<redacted>" for key in entry["env"]
+                }
+
+            print(json.dumps({self.serverName: previewEntry}, ensure_ascii=True, indent=2))
 
         completedTargets = []
         handledPaths: set[pathlib.Path] = set()
@@ -569,7 +595,7 @@ class InstallCommand:
             if self.installMCP and self._applyMCP(backend, entry):
                 completedTargets.append(target)
 
-            if self.installSkills:
+            if target in self.skillTargets:
                 self._applySkills(backend, skills, handledPaths)
 
         if self.installMCP and not self.args.uninstall and not self.args.printOnly:

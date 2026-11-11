@@ -35,19 +35,23 @@ from typing import Any, Dict, Optional, Tuple
 from mcp_install.skills import PreparedSkill, SkillInstaller
 
 
-def runCommand(command: list[str], allowFailure: bool = False) -> None:
-    """Run a CLI-based backend's command; raise with its output on failure."""
-    result = subprocess.run(command, check=False, capture_output=True, text=True, encoding="utf-8", errors="replace")
+def runCommand(command: list[str], allowedFailureText: Optional[str] = None) -> bool:
+    """Run a CLI command, ignoring only a specifically recognized failure."""
+    result = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     if result.returncode == 0:
-        return
+        return True
 
-    if allowFailure:
-        return
+    detail = (result.stderr.strip() or result.stdout.strip() or "Unknown error")
+    if allowedFailureText and allowedFailureText in detail:
+        return False
 
-    stderrText = result.stderr.strip()
-    stdoutText = result.stdout.strip()
-    detailParts = [part for part in [stderrText, stdoutText] if part]
-    detail = detailParts[0] if detailParts else "Unknown error"
     raise RuntimeError(f"Command failed: {' '.join(command)}: {detail}")
 
 
@@ -198,6 +202,10 @@ class AgentBackend:
     @property
     def skillNotice(self) -> Optional[str]:
         return None
+
+    @property
+    def supportsProjectSkills(self) -> bool:
+        return self._projectSkillPaths is not None
 
     def skillRoots(
         self,

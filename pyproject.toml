@@ -23,7 +23,7 @@ classifiers = [
     "Operating System :: OS Independent",
     "Topic :: Software Development :: Build Tools",
 ]
-dependencies = []
+dependencies = ["PyYAML>=6.0.2,<7"]
 
 [project.urls]
 Homepage = "https://github.com/nuwainfo/mcp-install"
