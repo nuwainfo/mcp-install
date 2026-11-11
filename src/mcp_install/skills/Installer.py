@@ -63,6 +63,11 @@ class SkillInstaller:
             raise ValueError(f"Skill path must remain under the manifest directory: {spec.path}")
 
         root = manifestPath.parent.resolve()
+        for depth in range(1, len(relative.parts) + 1):
+            candidate = root.joinpath(*relative.parts[:depth])
+            if candidate.is_symlink():
+                raise ValueError(f"Skill source path contains a symbolic link: {candidate}")
+
         source = (root / relative).resolve()
         if not source.is_relative_to(root):
             raise ValueError(f"Skill path escapes the manifest directory: {spec.path}")
