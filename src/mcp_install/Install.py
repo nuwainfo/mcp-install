@@ -384,7 +384,7 @@ class InstallCommand:
     def _buildBackends(self) -> Dict[str, AgentBackend]:
         args = self.args
         openCodeDefault = pathlib.Path.home() / ".config/opencode/opencode.jsonc"
-        if "opencode" in self.targets and not args.openCodeConfigPath:
+        if self.installMCP and "opencode" in self.targets and not args.openCodeConfigPath:
             openCodeDefault = getDefaultOpenCodeConfigPath()
 
         openCodeConfigPath = self._configPath(args.openCodeConfigPath, openCodeDefault)
