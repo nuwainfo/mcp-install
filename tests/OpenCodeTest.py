@@ -273,6 +273,31 @@ class OpenCodeTest(unittest.TestCase):
         )
         self.assertFalse((self.home / ".config/opencode/skills/sample").exists())
 
+    def testSkillOnlyIgnoresAmbiguousMcpConfiguration(self):
+        self.manifest.write_text(
+            json.dumps({"skills": [{"path": "skills/sample"}]})
+        )
+        args = InstallCommand.createParser().parse_args([
+            "--app-config", str(self.manifest),
+            "--component", "skill",
+            "--target", "opencode",
+        ])
+        command = InstallCommand(args, loadAppConfig(str(self.manifest)), self.manifest)
+        command.homePath = self.home
+
+        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(self.base)}):
+            configDirectory = self.base / "opencode"
+            configDirectory.mkdir()
+            (configDirectory / "opencode.json").write_text("{}")
+            (configDirectory / "opencode.jsonc").write_text("{}")
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                command.run()
+
+            self.assertTrue(
+                (configDirectory / "skills/sample/SKILL.md").is_file()
+            )
+
     def testAllTargetsIncludeOpenCode(self):
         self.assertIn("opencode", normalizeInstallTargets(["all"]))
 
