@@ -136,7 +136,10 @@ class ClaudeCliBackend(AgentBackend):
         if overwrite:
             runCommand(
                 [cliPath, "mcp", "remove", "-s", self.scope, serverName],
-                allowedFailureText="No MCP server found with name:",
+                allowedFailureMessages=(
+                    f"No MCP server found with name: {serverName}",
+                    f'No MCP server named "{serverName}" in {self.scope} scope',
+                ),
             )
 
         runCommand(command)
