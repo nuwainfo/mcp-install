@@ -218,48 +218,54 @@ class ReleaseSafetyTest(unittest.TestCase):
 
     def testClaudeOverwriteIgnoresOnlyConfirmedMissingServer(self):
         backend = ClaudeCliBackend("claude", "user")
-        missing = subprocess.CompletedProcess(
-            args=["claude"],
-            returncode=1,
-            stdout="No MCP server found with name: example",
-            stderr="",
-        )
-        success = subprocess.CompletedProcess(
-            args=["claude"],
-            returncode=0,
-            stdout="Added",
-            stderr="",
+        messages = (
+            "No MCP server found with name: example",
+            'No MCP server named "example" in user scope',
         )
 
-        with mock.patch(
-            "mcp_install.backends.Base.subprocess.run",
-            side_effect=[missing, success],
-        ) as run:
-            backend.install("example", {"command": "uvx", "args": ["demo"]}, True)
+        for message in messages:
+            with self.subTest(message=message):
+                missing = subprocess.CompletedProcess(
+                    args=["claude"], returncode=1, stdout="", stderr=message,
+                )
+                success = subprocess.CompletedProcess(
+                    args=["claude"], returncode=0, stdout="Added", stderr="",
+                )
 
-        self.assertEqual(2, run.call_count)
+                with mock.patch(
+                    "mcp_install.backends.Base.subprocess.run",
+                    side_effect=[missing, success],
+                ) as run:
+                    backend.install("example", {"command": "uvx", "args": ["demo"]}, True)
+
+                self.assertEqual(2, run.call_count)
 
     def testClaudeOverwriteDoesNotIgnoreUnexpectedRemoveError(self):
         backend = ClaudeCliBackend("claude", "user")
-        failed = subprocess.CompletedProcess(
-            args=["claude"],
-            returncode=1,
-            stdout="",
-            stderr="Permission denied",
+        messages = (
+            "Permission denied",
+            "No MCP server found with name: another",
+            'No MCP server named "another" in user scope',
+            'No MCP server named "example" in local scope',
+            'Permission denied: No MCP server named "example" in user scope',
         )
 
-        with mock.patch(
-            "mcp_install.backends.Base.subprocess.run",
-            return_value=failed,
-        ) as run:
-            with self.assertRaisesRegex(RuntimeError, "Permission denied"):
-                backend.install(
-                    "example",
-                    {"command": "uvx", "args": ["demo"]},
-                    True,
+        for message in messages:
+            with self.subTest(message=message):
+                failed = subprocess.CompletedProcess(
+                    args=["claude"], returncode=1, stdout="", stderr=message,
                 )
 
-        self.assertEqual(1, run.call_count)
+                with mock.patch(
+                    "mcp_install.backends.Base.subprocess.run",
+                    return_value=failed,
+                ) as run:
+                    with self.assertRaisesRegex(RuntimeError, "Command failed"):
+                        backend.install(
+                            "example", {"command": "uvx", "args": ["demo"]}, True,
+                        )
+
+                self.assertEqual(1, run.call_count)
 
 
 if __name__ == "__main__":

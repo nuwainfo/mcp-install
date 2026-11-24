@@ -35,7 +35,7 @@ from typing import Any, Dict, Optional, Tuple
 from mcp_install.skills import PreparedSkill, SkillInstaller
 
 
-def runCommand(command: list[str], allowedFailureText: Optional[str] = None) -> bool:
+def runCommand(command: list[str], allowedFailureMessages: tuple[str, ...] = ()) -> bool:
     """Run a CLI command, ignoring only a specifically recognized failure."""
     result = subprocess.run(
         command,
@@ -45,11 +45,12 @@ def runCommand(command: list[str], allowedFailureText: Optional[str] = None) -> 
         encoding="utf-8",
         errors="replace",
     )
+
     if result.returncode == 0:
         return True
 
     detail = (result.stderr.strip() or result.stdout.strip() or "Unknown error")
-    if allowedFailureText and allowedFailureText in detail:
+    if detail in allowedFailureMessages:
         return False
 
     raise RuntimeError(f"Command failed: {' '.join(command)}: {detail}")
