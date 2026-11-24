@@ -218,26 +218,27 @@ class ReleaseSafetyTest(unittest.TestCase):
 
     def testClaudeOverwriteIgnoresOnlyConfirmedMissingServer(self):
         backend = ClaudeCliBackend("claude", "user")
-        missing = subprocess.CompletedProcess(
-            args=["claude"],
-            returncode=1,
-            stdout="No MCP server found with name: example",
-            stderr="",
-        )
-        success = subprocess.CompletedProcess(
-            args=["claude"],
-            returncode=0,
-            stdout="Added",
-            stderr="",
+        messages = (
+            "No MCP server found with name: example",
+            'No MCP server named "example" in user scope',
         )
 
-        with mock.patch(
-            "mcp_install.backends.Base.subprocess.run",
-            side_effect=[missing, success],
-        ) as run:
-            backend.install("example", {"command": "uvx", "args": ["demo"]}, True)
+        for message in messages:
+            with self.subTest(message=message):
+                missing = subprocess.CompletedProcess(
+                    args=["claude"], returncode=1, stdout="", stderr=message,
+                )
+                success = subprocess.CompletedProcess(
+                    args=["claude"], returncode=0, stdout="Added", stderr="",
+                )
 
-        self.assertEqual(2, run.call_count)
+                with mock.patch(
+                    "mcp_install.backends.Base.subprocess.run",
+                    side_effect=[missing, success],
+                ) as run:
+                    backend.install("example", {"command": "uvx", "args": ["demo"]}, True)
+
+                self.assertEqual(2, run.call_count)
 
     def testClaudeOverwriteDoesNotIgnoreUnexpectedRemoveError(self):
         backend = ClaudeCliBackend("claude", "user")
